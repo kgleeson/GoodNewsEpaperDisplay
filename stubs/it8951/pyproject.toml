@@ -1,0 +1,10 @@
+[project]
+name = "it8951"
+version = "1.0.0"
+description = "Stub for macOS/non-Linux development"
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

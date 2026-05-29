@@ -10,13 +10,14 @@ from dotenv import load_dotenv
 DEFAULT_TIMEZONE = "Europe/Dublin"
 DEFAULT_SCHEDULE_HOUR = 8
 DEFAULT_SCHEDULE_MINUTE = 0
+DEFAULT_DEVICE = "waveshare_epd.epd7in3f"
 
 
 @dataclass
 class OpenAIConfig:
     api_key: Optional[str]
-    text_model: str = "gpt-5-nano"
-    image_model: str = "gpt-image-1-mini"
+    text_model: str = "gpt-4o-mini"
+    image_model: str = "gpt-image-1"
     image_size: str = "1536x1024"
     organization: Optional[str] = None
 
@@ -50,6 +51,7 @@ class AppConfig:
     storage: StorageConfig
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    device_type: str = DEFAULT_DEVICE
     rss_feed_url: str = "https://www.rte.ie/feeds/rss/?index=%2Fnews%2F"
     positivity_sample_size: int = 8
     positivity_select_count: int = 3
@@ -107,6 +109,9 @@ def load_config(env_path: Optional[Path] = None) -> AppConfig:
         openai=OpenAIConfig(
             api_key=openai_api_key,
             organization=openai_org,
+            text_model=os.getenv("EPAPER_TEXT_MODEL", "gpt-4o-mini"),
+            image_model=os.getenv("EPAPER_IMAGE_MODEL", "gpt-image-1"),
+            image_size=os.getenv("EPAPER_IMAGE_SIZE", "1536x1024"),
         ),
         storage=_build_storage(data_dir),
         scheduler=SchedulerConfig(
@@ -115,6 +120,7 @@ def load_config(env_path: Optional[Path] = None) -> AppConfig:
             timezone=timezone,
         ),
         web=WebConfig(host=web_host, port=web_port),
+        device_type=os.getenv("EPAPER_DEVICE", DEFAULT_DEVICE),
         rss_feed_url=os.getenv(
             "EPAPER_RSS_FEED_URL", "https://www.rte.ie/feeds/rss/?index=%2Fnews%2F"
         ),

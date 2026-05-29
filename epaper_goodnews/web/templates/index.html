@@ -1,152 +1,465 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-IE">
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Good News Display</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
-      header { margin-bottom: 2rem; }
-      .status { margin-top: 1rem; font-size: 0.9rem; color: #555; }
-      .image-preview { max-width: 800px; border: 1px solid #ccc; background: #fff; padding: 1rem; }
-      img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-      .actions { margin-top: 1.5rem; }
-      button { padding: 0.6rem 1.2rem; font-size: 1rem; }
-      a { margin-right: 1rem; }
+      :root {
+        --paper:       #FEFAF2;
+        --paper-card:  #FFFEF9;
+        --ink:         #1A1714;
+        --ink-mid:     #4A4440;
+        --muted:       #9A8E85;
+        --rule:        #C8B89A;
+        --rule-light:  #E4DDD0;
+        --accent:      #B82010;
+        --success-fg:  #2D6E3E;
+        --success-bg:  #E6F3EA;
+        --fail-fg:     #8B1A10;
+        --fail-bg:     #FDECEA;
+        --warn-fg:     #7A5C10;
+        --warn-bg:     #FDF4DC;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Lora', Georgia, serif;
+        min-height: 100vh;
+      }
+
+      /* ── Palette bar ── */
+      .palette-bar {
+        display: flex;
+        height: 7px;
+        width: 100%;
+      }
+      .palette-bar span {
+        flex: 1;
+      }
+
+      /* ── Masthead ── */
+      .masthead {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.75rem 1.5rem 0;
+      }
+      .masthead-inner {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-bottom: 0.6rem;
+        border-bottom: 3px double var(--rule);
+      }
+      .masthead-title {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: clamp(1.4rem, 3vw, 2rem);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ink);
+        line-height: 1;
+      }
+      .masthead-meta {
+        font-family: 'Courier New', monospace;
+        font-size: 0.72rem;
+        color: var(--muted);
+        text-align: right;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      /* ── Main content ── */
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 1.5rem 3rem;
+      }
+
+      /* ── Headline section ── */
+      .headline-section {
+        padding: 2rem 0 1.5rem;
+        border-bottom: 1px solid var(--rule-light);
+      }
+      .headline-kicker {
+        font-family: 'Courier New', monospace;
+        font-size: 0.7rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .headline-kicker::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--rule-light);
+      }
+      .headline-title {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: clamp(1.9rem, 4vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        line-height: 1.15;
+        color: var(--ink);
+        margin-bottom: 0.6rem;
+        max-width: 680px;
+      }
+      .headline-subheading {
+        font-family: 'Lora', Georgia, serif;
+        font-size: 1.05rem;
+        font-weight: 400;
+        color: var(--ink-mid);
+        line-height: 1.5;
+        max-width: 620px;
+        margin-bottom: 1rem;
+      }
+      .headline-dateline {
+        font-family: 'Courier New', monospace;
+        font-size: 0.7rem;
+        color: var(--muted);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      #no-data {
+        padding: 2rem 0;
+        font-family: 'Playfair Display', Georgia, serif;
+        font-style: italic;
+        color: var(--muted);
+        font-size: 1.2rem;
+        border-bottom: 1px solid var(--rule-light);
+      }
+
+      /* ── Status indicators ── */
+      .status-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        vertical-align: middle;
+        margin-right: 0.3rem;
+      }
+      .dot-success  { background: var(--success-fg); }
+      .dot-failed   { background: var(--accent); }
+      .dot-cancelled { background: var(--muted); }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 2px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.67rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .pill-success  { background: var(--success-bg); color: var(--success-fg); }
+      .pill-failed   { background: var(--fail-bg);    color: var(--fail-fg); }
+      .pill-cancelled { background: var(--warn-bg);   color: var(--warn-fg); }
+      .pill-running  {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+        animation: pulse-badge 1.5s ease-in-out infinite;
+      }
+      @keyframes pulse-badge {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+
+      /* ── Image display ── */
+      .image-section {
+        padding: 1.5rem 0;
+      }
+      .image-frame {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        max-width: 800px;
+        background: var(--ink);
+        padding: 10px;
+        box-shadow: 4px 6px 20px rgba(26,23,20,0.18);
+      }
+      .image-frame img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .image-caption {
+        font-family: 'Courier New', monospace;
+        font-size: 0.65rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-top: 0.6rem;
+      }
+
+      /* ── Actions bar ── */
+      .actions-bar {
+        padding: 1.5rem 0 0;
+        border-top: 1px solid var(--rule-light);
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+        flex-wrap: wrap;
+      }
+      .btn-generate {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: 0.95rem;
+        font-style: italic;
+        padding: 0.55rem 1.3rem;
+        background: var(--ink);
+        color: var(--paper);
+        border: none;
+        cursor: pointer;
+        letter-spacing: 0.02em;
+        transition: background 0.15s;
+      }
+      .btn-generate:hover { background: var(--ink-mid); }
+      .btn-generate:disabled {
+        background: var(--rule);
+        cursor: not-allowed;
+        color: var(--paper);
+      }
+      .btn-generate::after { content: ' →'; }
+      .btn-generate:disabled::after { content: ''; }
+      .nav-link {
+        font-family: 'Lora', Georgia, serif;
+        font-size: 0.875rem;
+        color: var(--ink-mid);
+        text-decoration: none;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 1px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .nav-link:hover { color: var(--accent); border-color: var(--accent); }
+
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+        font-family: 'Courier New', monospace;
+        font-size: 0.7rem;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .status-bar strong { color: var(--ink-mid); }
+      #status-message {
+        font-family: 'Lora', Georgia, serif;
+        font-style: italic;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-top: 0.5rem;
+        min-height: 1.2em;
+      }
     </style>
   </head>
   <body>
-    <div id="app-state" data-run-id="{{ metadata.run_id if metadata and metadata.run_id else '' }}"></div>
-    <header>
-      <h1>Good News Display</h1>
-      <div id="headline-block" {% if not metadata %}style="display:none"{% endif %}>
-        <h2 id="headline-title">{{ metadata.headline.headline if metadata and metadata.headline else '' }}</h2>
-        <p id="headline-subheading">{{ metadata.headline.subheading if metadata and metadata.headline and metadata.headline.subheading else '' }}</p>
-        <div class="status">
-          <div>Last updated: <span id="last-updated">{{ metadata.completed_at if metadata else '' }}</span></div>
-          <div>Run status: <span id="run-status">{{ metadata.status if metadata else '' }}</span></div>
-        </div>
-      </div>
-      <div id="no-data" class="status" {% if metadata %}style="display:none"{% endif %}>
-        <p>No image generated yet.</p>
-      </div>
-      <div class="status">
-        <div>Scheduler next run: <span id="next-run">{{ next_run or 'unknown' }}</span></div>
-        <div>Job running: <span id="job-running">{{ 'yes' if job_running else 'no' }}</span></div>
-      </div>
-      <div id="status-message" class="status"></div>
-    </header>
 
-    <div class="image-preview" id="image-wrapper" {% if not image_url %}style="display:none"{% endif %}>
-      <img id="current-image" src="{{ image_url if image_url else '' }}" alt="Current display image">
+    <!-- 7-colour ePaper palette bar -->
+    <div class="palette-bar" aria-hidden="true">
+      <span style="background:#1A1714"></span>
+      <span style="background:#B82010"></span>
+      <span style="background:#2D7A3F"></span>
+      <span style="background:#1B4DB7"></span>
+      <span style="background:#C8A200"></span>
+      <span style="background:#C86010"></span>
+      <span style="background:#FEFAF2"></span>
     </div>
 
-    <div class="actions">
-      <form id="generate-form" action="{{ url_for('generate') }}" method="post">
-        <button id="generate-button" type="submit">Generate New Image</button>
-      </form>
-      <p>
-        <a href="{{ url_for('history') }}">View history</a>
-      </p>
+    <!-- Masthead -->
+    <div class="masthead">
+      <div class="masthead-inner">
+        <div class="masthead-title">Good News Display</div>
+        <div class="masthead-meta" id="masthead-date">
+          <!-- filled by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Main -->
+    <div class="container">
+      <div id="app-state" data-run-id="{{ metadata.run_id if metadata and metadata.run_id else '' }}"></div>
+
+      <!-- Headline -->
+      <div class="headline-section" id="headline-block" {% if not metadata %}style="display:none"{% endif %}>
+        <div class="headline-kicker">Today's edition</div>
+        <h1 class="headline-title" id="headline-title">
+          {{ metadata.headline.headline if metadata and metadata.headline else '' }}
+        </h1>
+        <p class="headline-subheading" id="headline-subheading"
+           {% if not (metadata and metadata.headline and metadata.headline.subheading) %}style="display:none"{% endif %}>
+          {{ metadata.headline.subheading if metadata and metadata.headline and metadata.headline.subheading else '' }}
+        </p>
+        <div class="headline-dateline">
+          <span id="run-status-badge" class="pill {% if metadata %}pill-{{ metadata.status }}{% endif %}">
+            {{ metadata.status if metadata else '' }}
+          </span>
+          <span id="last-updated">{{ metadata.completed_at if metadata and metadata.completed_at else '' }}</span>
+          <span id="job-running-badge" class="pill pill-running" {% if not job_running %}style="display:none"{% endif %}>
+            ◉ Generating
+          </span>
+        </div>
+      </div>
+
+      <p id="no-data" {% if metadata %}style="display:none"{% endif %}>No edition generated yet.</p>
+
+      <!-- Image -->
+      <div class="image-section" id="image-wrapper" {% if not image_url %}style="display:none"{% endif %}>
+        <div class="image-frame">
+          <img id="current-image" src="{{ image_url if image_url else '' }}" alt="Current display image">
+        </div>
+        <p class="image-caption">Waveshare 7.3&Prime; · 800&thinsp;&times;&thinsp;480 · 7 colour</p>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions-bar">
+        <form id="generate-form" action="{{ url_for('generate') }}" method="post">
+          <button id="generate-button" class="btn-generate" type="submit">Generate new edition</button>
+        </form>
+        <a href="{{ url_for('history') }}" class="nav-link">View archive</a>
+      </div>
+
+      <div class="status-bar">
+        <span>Next edition: <strong id="next-run">{{ next_run or 'unknown' }}</strong></span>
+      </div>
+      <div id="status-message"></div>
     </div>
 
     <script>
       (function () {
-        const form = document.getElementById('generate-form');
+        // Fill masthead date
+        var d = document.getElementById('masthead-date');
+        if (d) {
+          var now = new Date();
+          d.textContent = now.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        var form = document.getElementById('generate-form');
         if (!form) return;
 
-        const button = document.getElementById('generate-button');
-        const statusMessage = document.getElementById('status-message');
-        const jobRunningEl = document.getElementById('job-running');
-        const headlineBlock = document.getElementById('headline-block');
-        const noData = document.getElementById('no-data');
-        const headlineTitle = document.getElementById('headline-title');
-        const headlineSubtitle = document.getElementById('headline-subheading');
-        const lastUpdated = document.getElementById('last-updated');
-        const runStatus = document.getElementById('run-status');
-        const nextRun = document.getElementById('next-run');
-        const imageWrapper = document.getElementById('image-wrapper');
-        const imageEl = document.getElementById('current-image');
-        const appState = document.getElementById('app-state');
+        var button        = document.getElementById('generate-button');
+        var statusMessage = document.getElementById('status-message');
+        var jobBadge      = document.getElementById('job-running-badge');
+        var runStatusBadge = document.getElementById('run-status-badge');
+        var headlineBlock = document.getElementById('headline-block');
+        var noData        = document.getElementById('no-data');
+        var headlineTitle = document.getElementById('headline-title');
+        var headlineSub   = document.getElementById('headline-subheading');
+        var lastUpdated   = document.getElementById('last-updated');
+        var nextRun       = document.getElementById('next-run');
+        var imageWrapper  = document.getElementById('image-wrapper');
+        var imageEl       = document.getElementById('current-image');
+        var appState      = document.getElementById('app-state');
 
         function setButtonState(disabled, label) {
           if (!button) return;
           button.disabled = disabled;
-          button.textContent = label;
+          button.style.setProperty('--btn-label', label);
+          // use textContent but keep → suffix via CSS ::after when not disabled
+          var base = label;
+          button.textContent = base;
+          if (!disabled) button.style.cssText = '';
+        }
+
+        function pillClass(status) {
+          if (status === 'success')   return 'pill pill-success';
+          if (status === 'failed')    return 'pill pill-failed';
+          if (status === 'cancelled') return 'pill pill-cancelled';
+          return 'pill';
         }
 
         function updateUI(data) {
           if (!data) return;
-          if (jobRunningEl) {
-            jobRunningEl.textContent = data.job_running ? 'yes' : 'no';
-          }
-          if (nextRun && data.next_run !== undefined) {
-            nextRun.textContent = data.next_run || 'unknown';
-          }
+          var running = Boolean(data.job_running);
+
+          if (jobBadge) jobBadge.style.display = running ? '' : 'none';
+          if (nextRun && data.next_run !== undefined) nextRun.textContent = data.next_run || 'unknown';
+
           if (data.headline && data.headline.headline) {
-            headlineTitle.textContent = data.headline.headline;
-            headlineSubtitle.textContent = data.headline.subheading || '';
+            if (headlineTitle) headlineTitle.textContent = data.headline.headline;
+            if (headlineSub) {
+              var sub = data.headline.subheading || '';
+              headlineSub.textContent = sub;
+              headlineSub.style.display = sub ? '' : 'none';
+            }
             if (headlineBlock) headlineBlock.style.display = '';
             if (noData) noData.style.display = 'none';
           }
-          if (lastUpdated && data.completed_at) {
-            lastUpdated.textContent = data.completed_at;
+          if (lastUpdated && data.completed_at) lastUpdated.textContent = data.completed_at;
+          if (runStatusBadge && data.status) {
+            runStatusBadge.textContent = data.status;
+            runStatusBadge.className = pillClass(data.status);
           }
-          if (runStatus && data.status) {
-            runStatus.textContent = data.status;
-          }
-          if (appState && data.run_id) {
-            appState.dataset.runId = data.run_id;
-          }
+          if (appState && data.run_id) appState.dataset.runId = data.run_id;
           if (imageEl && data.image) {
             imageEl.src = data.image + '?t=' + Date.now();
             if (imageWrapper) imageWrapper.style.display = '';
           }
         }
 
-        function pollStatus(previousRunId, attempt = 0) {
+        function pollStatus(previousRunId, attempt) {
+          attempt = attempt || 0;
           fetch('/api/current?ts=' + Date.now())
-            .then(resp => resp.json())
-            .then(data => {
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
               updateUI(data);
-              const stillRunning = Boolean(data.job_running);
-              const runId = data.run_id || null;
-              const finished = !stillRunning && runId && runId !== previousRunId;
+              var stillRunning = Boolean(data.job_running);
+              var runId = data.run_id || null;
+              var finished = !stillRunning && runId && runId !== previousRunId;
               if (finished || (!stillRunning && attempt > 5)) {
-                setButtonState(false, 'Generate New Image');
+                setButtonState(false, 'Generate new edition');
                 if (statusMessage) {
                   statusMessage.textContent = data.status === 'success'
-                    ? 'Generation complete.'
-                    : 'Generation finished with status: ' + (data.status || 'unknown');
+                    ? 'New edition ready.'
+                    : 'Finished with status: ' + (data.status || 'unknown');
                 }
                 return;
               }
-              setTimeout(() => pollStatus(runId || previousRunId, attempt + 1), Math.min(5000, 1000 + attempt * 500));
+              setTimeout(function() { pollStatus(runId || previousRunId, attempt + 1); },
+                Math.min(5000, 1000 + attempt * 500));
             })
-            .catch(err => {
+            .catch(function(err) {
               console.error('Polling failed', err);
-              if (statusMessage) statusMessage.textContent = 'Error checking status. Please refresh later.';
-              setButtonState(false, 'Generate New Image');
+              if (statusMessage) statusMessage.textContent = 'Could not reach server. Please refresh.';
+              setButtonState(false, 'Generate new edition');
             });
         }
 
-        form.addEventListener('submit', function (event) {
-          event.preventDefault();
-          if (statusMessage) statusMessage.textContent = 'Starting generation...';
-          const previousRunId = appState ? (appState.dataset.runId || null) : null;
-          setButtonState(true, 'Generating...');
-          fetch(form.action, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-          })
-            .then(resp => resp.json())
-            .then(data => {
-              if (statusMessage) statusMessage.textContent = data.started ? 'Generation in progress...' : 'Generation already running...';
-              pollStatus(previousRunId);
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          if (statusMessage) statusMessage.textContent = 'Composing…';
+          var previousRunId = appState ? (appState.dataset.runId || null) : null;
+          setButtonState(true, 'Composing…');
+          fetch(form.action, { method: 'POST', headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (statusMessage) statusMessage.textContent = data.started ? 'Generation in progress…' : 'Already running…';
+              pollStatus(previousRunId, 0);
             })
-            .catch(err => {
-              console.error('Failed to trigger generation', err);
-              if (statusMessage) statusMessage.textContent = 'Failed to start generation. Please try again.';
-              setButtonState(false, 'Generate New Image');
+            .catch(function(err) {
+              console.error('Failed to start generation', err);
+              if (statusMessage) statusMessage.textContent = 'Could not start generation. Please try again.';
+              setButtonState(false, 'Generate new edition');
             });
         });
       })();

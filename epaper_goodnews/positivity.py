@@ -25,8 +25,7 @@ def _build_payload(articles: Iterable[Article]) -> List[dict]:
                 "guid": article.guid,
                 "title": article.title,
                 "summary": article.summary,
-                "link": article.link,
-                "published": article.published.isoformat(),
+                "published": article.published.isoformat() if article.published else None,
             }
         )
     return payload
@@ -35,11 +34,15 @@ def _build_payload(articles: Iterable[Article]) -> List[dict]:
 def _make_prompt(payload: List[dict]) -> str:
     items = json.dumps(payload, ensure_ascii=False, indent=2)
     return (
-        "You will receive recent news articles from RTÉ. "
-        "Identify the most positive, uplifting stories. "
-        "Return a JSON array under the key 'items'. Each item must have keys "
-        "'guid', 'positivity' (0-1 float), and 'rationale' (brief sentence). Respond "
-        "with JSON only and no additional commentary.\n\n"
+        "You are a positivity filter for an Irish good-news display.\n"
+        "Score each article on a scale of 0.0 to 1.0 for how uplifting and positive it is:\n"
+        "  1.0 — clearly good news: achievements, breakthroughs, community stories, nature, acts of kindness\n"
+        "  0.5 — neutral or mixed: informational, neither good nor bad\n"
+        "  0.0 — negative: crime, conflict, death, disaster, controversy\n\n"
+        "Favour stories about: people helping people, scientific or medical breakthroughs, "
+        "environmental wins, cultural celebrations, animals, sport achievements, and community milestones.\n\n"
+        "Return ONLY a JSON object with a single key 'items' containing an array. "
+        "Each element must have: 'guid' (string), 'positivity' (float 0-1), 'rationale' (one sentence max).\n\n"
         f"Articles:\n{items}"
     )
 
@@ -86,7 +89,7 @@ def select_positive_articles(
             model=config.openai.text_model,
             input=prompt,
         )
-    except Exception as exc:  # pragma: no cover - network failure
+    except Exception as exc:
         raise PositivityError(f"OpenAI positivity call failed: {exc}") from exc
 
     if cancel_event and cancel_event.is_set():
@@ -95,7 +98,10 @@ def select_positive_articles(
     text = ""
     try:
         text = _extract_text(response)
-        data = json.loads(text)
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0]
+        data = json.loads(stripped)
     except Exception as exc:
         LOGGER.error("Failed to parse positivity response: %s", text)
         raise PositivityError("Unable to parse positivity response") from exc

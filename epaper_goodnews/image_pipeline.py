@@ -16,22 +16,18 @@ from .models import HeadlineResult, ImageResult, PositiveArticle
 
 LOGGER = logging.getLogger(__name__)
 
-EPAPER_COLORS = [
-    (255, 255, 255),  # White
-    (0, 0, 0),  # Black
-    (255, 0, 0),  # Red
-    (0, 128, 0),  # Green
-    (0, 0, 255),  # Blue
-    (255, 255, 0),  # Yellow
-    (255, 128, 0),  # Orange
-]
+DISPLAY_WIDTH = 800
+DISPLAY_HEIGHT = 480
 
-VALID_IMAGE_SIZES = {
+ALLOWED_IMAGE_SIZES = {
+    "auto",
+    "1024x1024",
+    "1536x1024",
+    "1024x1536",
+    "1792x1024",
+    "1024x1792",
     "256x256",
     "512x512",
-    "1024x1024",
-    "1024x1536",
-    "1536x1024",
 }
 
 
@@ -39,39 +35,25 @@ class ImageGenerationError(RuntimeError):
     pass
 
 
-def _build_image_prompt(
-    headline: HeadlineResult, positives: List[PositiveArticle]
-) -> str:
+def _build_image_prompt(headline: HeadlineResult, positives: List[PositiveArticle]) -> str:
     descriptors = ", ".join(p.article.title for p in positives if p.article.title)
     if not descriptors:
         descriptors = headline.headline
     return (
-        f"Create a lively watercolour comic-style illustration suited for a 7-colour ePaper display. "
-        f"Emphasise painterly washes, soft edges, and layered brush strokes within the limited palette: "
-        f"white, black, red, green, blue, yellow, and orange. Use playful composition and gentle gradients "
-        f"while avoiding photorealism and hard geometric shapes. Frame the artwork as a single cohesive scene "
-        f"(no panels or divided sections) and do not include any text. Incorporate themes from the headline "
-        f"'{headline.headline}'. Inspiration: {descriptors}."
+        f"Create a lively watercolour illustration for a 7-colour ePaper display. "
+        f"The image will be rendered using only these 7 colours: white, black, red, green, blue, yellow, "
+        f"and orange — so design with bold, simple shapes, strong colour regions, and clear contrast that "
+        f"survive dithering to this limited palette. Use painterly washes, soft edges, and layered brush strokes. "
+        f"Avoid photorealism, fine gradients, grey tones, and hard geometric shapes. "
+        f"Compose as a single cohesive scene with no panels, no text, and no UI elements. "
+        f"Incorporate themes from the headline '{headline.headline}'. "
+        f"Inspiration: {descriptors}."
     )
 
 
 def _decode_base64_image(b64_data: str) -> Image.Image:
     raw = base64.b64decode(b64_data)
     return Image.open(BytesIO(raw)).convert("RGB")
-
-
-def _quantize_to_palette(image: Image.Image) -> Image.Image:
-    palette_img = Image.new("P", (len(EPAPER_COLORS), 1))
-    palette: list[int] = []
-    for color in EPAPER_COLORS:
-        palette.extend(color)
-    padding = 768 - len(palette)
-    if padding > 0:
-        palette.extend([0] * padding)
-    palette_img.putpalette(palette)
-    return image.convert("RGB").quantize(
-        palette=palette_img, dither=Image.Dither.FLOYDSTEINBERG
-    )
 
 
 def generate_image_assets(
@@ -91,22 +73,11 @@ def generate_image_assets(
     LOGGER.info("Requesting image generation from OpenAI")
 
     request_size = config.openai.image_size
-    allowed_sizes = [
-        "auto",
-        "1024x1024",
-        "1536x1024",
-        "1024x1536",
-        "256x256",
-        "512x512",
-        "1792x1024",
-        "1024x1792",
-    ]
-    if request_size not in allowed_sizes:
+    if request_size not in ALLOWED_IMAGE_SIZES:
         LOGGER.warning(
-            "Requested image size %s is unsupported. Falling back to 1024x1024.",
-            request_size,
+            "Image size %s unsupported; falling back to 1536x1024", request_size
         )
-        request_size = "1024x1024"
+        request_size = "1536x1024"
 
     try:
         response = client.images.generate(
@@ -114,7 +85,7 @@ def generate_image_assets(
             prompt=prompt,
             size=request_size,  # type: ignore
         )
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         raise ImageGenerationError(f"OpenAI image generation failed: {exc}") from exc
 
     if cancel_event and cancel_event.is_set():
@@ -131,26 +102,19 @@ def generate_image_assets(
         raise ImageGenerationError("Image data is missing or not a valid string")
 
     base_image = _decode_base64_image(image_data)
-    web_image = base_image.resize((800, 480), Resampling.LANCZOS)
-    display_image = _quantize_to_palette(web_image)
+    web_image = base_image.resize((DISPLAY_WIDTH, DISPLAY_HEIGHT), Resampling.LANCZOS)
 
     timestamp = datetime.now().strftime("%Y-%m-%d")
     png_name = f"{timestamp}-{run_id}.png"
-    bmp_name = f"{timestamp}-{run_id}.bmp"
-
     png_path = storage.images_path / png_name
-    bmp_path = storage.images_path / bmp_name
-
     web_image.save(png_path, format="PNG")
-    display_image.save(bmp_path, format="BMP")
 
-    LOGGER.info("Saved image assets to %s and %s", png_path, bmp_path)
+    LOGGER.info("Saved image to %s", png_path)
 
     return ImageResult(
         image_path=png_path,
-        display_path=bmp_path,
         prompt=prompt,
         response_id=getattr(response, "id", None),
-        width=800,
-        height=480,
+        width=DISPLAY_WIDTH,
+        height=DISPLAY_HEIGHT,
     )

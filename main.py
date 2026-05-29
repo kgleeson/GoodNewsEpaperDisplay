@@ -19,14 +19,6 @@ from epaper_goodnews.web.app import AppState, create_app
 app = typer.Typer(help="E-Paper Good News controller")
 
 
-class _NullDisplay(DisplayController):
-    def initialize(self) -> None:  # type: ignore[override]
-        logging.info("Display disabled; skipping hardware initialization")
-
-    def display_image(self, image_path: Path) -> None:  # type: ignore[override]
-        logging.info("Display disabled; skipping image update for %s", image_path)
-
-
 def setup_logging(log_dir: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "app.log"
@@ -46,26 +38,20 @@ def create_client(config: AppConfig) -> OpenAI:
 
 def init_components(
     env_path: Optional[Path] = None,
-    *,
-    with_display: bool = True,
 ) -> tuple[AppConfig, OpenAI, DisplayController, JobManager, SchedulerService]:
     config = load_config(env_path)
     setup_logging(config.storage.logs_path)
     client = create_client(config)
-    display: DisplayController
-    if with_display:
-        display = DisplayController()
-    else:
-        display = _NullDisplay()
+    display = DisplayController(device_type=config.device_type)
     job_manager = JobManager()
     scheduler = SchedulerService(config.scheduler)
     return config, client, display, job_manager, scheduler
 
 
 @app.command()
-def generate(skip_display: bool = typer.Option(False, help="Skip pushing to the ePaper display")):
-    """Run the pipeline once."""
-    config, client, display, _, _ = init_components(with_display=not skip_display)
+def generate():
+    """Run the pipeline once. Set EPAPER_DEVICE=omni_epd.mock to skip hardware."""
+    config, client, display, _, _ = init_components()
     display.initialize()
     metadata = run_generation(
         config=config,
@@ -75,17 +61,17 @@ def generate(skip_display: bool = typer.Option(False, help="Skip pushing to the 
     )
     typer.echo(f"Run completed with status: {metadata.status.value}")
     if metadata.errors:
-        typer.echo("Errors: \n" + "\n".join(metadata.errors))
+        typer.echo("Errors:\n" + "\n".join(metadata.errors))
+    display.close()
 
 
 @app.command()
 def serve(
     host: Optional[str] = typer.Option(None),
     port: Optional[int] = typer.Option(None),
-    skip_display: bool = typer.Option(False, help="Run without pushing updates to the ePaper display"),
 ):
-    """Start the combined scheduler and web server."""
-    config, client, display, job_manager, scheduler = init_components(with_display=not skip_display)
+    """Start the combined scheduler and web server. Set EPAPER_DEVICE=omni_epd.mock to skip hardware."""
+    config, client, display, job_manager, scheduler = init_components()
     display.initialize()
 
     def job(cancel_event):
@@ -118,6 +104,7 @@ def serve(
         flask_app.run(host=host_value, port=port_value)
     finally:
         scheduler.shutdown()
+        display.close()
 
 
 if __name__ == "__main__":

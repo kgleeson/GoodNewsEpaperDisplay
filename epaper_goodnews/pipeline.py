@@ -45,6 +45,7 @@ def run_generation(
         timezone=config.scheduler.timezone,
         text_model=config.openai.text_model,
         image_model=config.openai.image_model,
+        device_type=config.device_type,
     )
 
     try:
@@ -83,7 +84,7 @@ def run_generation(
         metadata.image = image
 
         _check_cancel(cancel_event)
-        display.display_image(image.display_path)
+        display.display_image(image.image_path)
 
         metadata.completed_at = datetime.now()
         metadata.status = RunStatus.SUCCESS

@@ -28,11 +28,8 @@ ENV/
 logs/
 *.log
 
-# Generated data
-data/images/
-data/metadata/
-data/current.json
-data/current.png
+# Generated data (images, metadata, symlinks)
+data/
 
 # macOS
 .DS_Store

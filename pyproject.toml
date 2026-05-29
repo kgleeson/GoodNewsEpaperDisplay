@@ -1,0 +1,55 @@
+[project]
+name = "epaper-goodnews"
+version = "0.1.0"
+description = "Daily positive-news display for Waveshare 7-color ePaper"
+requires-python = ">=3.10"
+dependencies = [
+    "APScheduler==3.10.4",
+    "Flask==3.0.2",
+    "Pillow>=9.1.0",
+    "Typer==0.12.3",
+    "feedparser==6.0.11",
+    "openai>=1.12.0",
+    "python-dotenv==1.0.1",
+    "requests==2.31.0",
+    "omni-epd @ git+https://github.com/robweber/omni-epd.git",
+    "gpiozero; sys_platform == 'linux'",
+]
+
+[project.scripts]
+epaper-goodnews = "main:app"
+
+[tool.uv]
+override-dependencies = [
+    "spidev; sys_platform == 'linux'",
+    "gpiod; sys_platform == 'linux'",
+    "rpi-gpio; sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "pytest>=8.0.0",
+]
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["epaper_goodnews"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

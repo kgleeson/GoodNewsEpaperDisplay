@@ -1,45 +1,339 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-IE">
   <head>
     <meta charset="utf-8">
-    <title>History - Good News Display</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Archive — Good News Display</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
-      article { background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #ddd; }
-      header { margin-bottom: 2rem; }
-      nav { margin-top: 1rem; }
-      a { margin-right: 1rem; }
+      :root {
+        --paper:       #FEFAF2;
+        --paper-card:  #FFFEF9;
+        --ink:         #1A1714;
+        --ink-mid:     #4A4440;
+        --muted:       #9A8E85;
+        --rule:        #C8B89A;
+        --rule-light:  #E4DDD0;
+        --accent:      #B82010;
+        --success-fg:  #2D6E3E;
+        --success-bg:  #E6F3EA;
+        --fail-fg:     #8B1A10;
+        --fail-bg:     #FDECEA;
+        --warn-fg:     #7A5C10;
+        --warn-bg:     #FDF4DC;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Lora', Georgia, serif;
+        min-height: 100vh;
+      }
+
+      /* ── Palette bar ── */
+      .palette-bar { display: flex; height: 7px; width: 100%; }
+      .palette-bar span { flex: 1; }
+
+      /* ── Masthead ── */
+      .masthead {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.75rem 1.5rem 0;
+      }
+      .masthead-inner {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-bottom: 0.6rem;
+        border-bottom: 3px double var(--rule);
+      }
+      .masthead-title {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: clamp(1.4rem, 3vw, 2rem);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ink);
+        line-height: 1;
+        text-decoration: none;
+      }
+      .masthead-title:hover { color: var(--ink-mid); }
+
+      /* ── Container ── */
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 1.5rem 3rem;
+      }
+
+      /* ── Section header ── */
+      .section-header {
+        padding: 1.5rem 0 1rem;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--rule-light);
+        margin-bottom: 1.5rem;
+      }
+      .section-header h1 {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: 1.6rem;
+        font-weight: 400;
+        font-style: italic;
+        color: var(--ink);
+      }
+      .back-link {
+        font-family: 'Lora', Georgia, serif;
+        font-size: 0.875rem;
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 1px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .back-link:hover { color: var(--accent); border-color: var(--accent); }
+
+      /* ── Clipping card ── */
+      .clipping {
+        display: flex;
+        background: var(--paper-card);
+        border: 1px solid var(--rule-light);
+        border-left: 3px solid var(--rule);
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+        transition: border-left-color 0.15s;
+      }
+      .clipping:hover { border-left-color: var(--accent); }
+      .clipping.status-success { border-left-color: var(--success-fg); }
+      .clipping.status-failed  { border-left-color: var(--accent); }
+
+      /* Thumbnail */
+      .clipping-thumb {
+        flex: 0 0 180px;
+        position: relative;
+        overflow: hidden;
+        background: var(--ink);
+      }
+      .clipping-thumb a { display: block; height: 100%; }
+      .clipping-thumb img {
+        width: 180px;
+        height: 108px;
+        object-fit: cover;
+        display: block;
+        opacity: 0.92;
+        transition: opacity 0.2s;
+      }
+      .clipping-thumb img:hover { opacity: 1; }
+      .clipping-thumb-placeholder {
+        width: 180px;
+        height: 108px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #2A2420;
+        color: #6A5E58;
+        font-family: 'Courier New', monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      /* Body */
+      .clipping-body {
+        flex: 1;
+        padding: 0.9rem 1.1rem 0.9rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 0;
+      }
+      .clipping-headline {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: 1.15rem;
+        font-weight: 400;
+        font-style: italic;
+        color: var(--ink);
+        line-height: 1.25;
+      }
+      .clipping-subheading {
+        font-size: 0.875rem;
+        color: var(--ink-mid);
+        line-height: 1.4;
+      }
+      .clipping-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.15rem;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.45rem;
+        border-radius: 2px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.62rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .pill-success  { background: var(--success-bg); color: var(--success-fg); }
+      .pill-failed   { background: var(--fail-bg);    color: var(--fail-fg); }
+      .pill-cancelled { background: var(--warn-bg);   color: var(--warn-fg); }
+      .clipping-timestamp {
+        font-family: 'Courier New', monospace;
+        font-size: 0.65rem;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .clipping-sources {
+        margin-top: auto;
+        padding-top: 0.4rem;
+        font-size: 0.72rem;
+        color: var(--muted);
+        line-height: 1.5;
+        border-top: 1px solid var(--rule-light);
+      }
+      .clipping-sources em {
+        font-style: normal;
+        color: var(--ink-mid);
+        font-weight: 500;
+      }
+      .clipping-links {
+        margin-top: 0.35rem;
+        display: flex;
+        gap: 1rem;
+        font-size: 0.75rem;
+      }
+      .clipping-links a {
+        color: var(--muted);
+        text-decoration: none;
+        border-bottom: 1px solid var(--rule-light);
+        padding-bottom: 1px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .clipping-links a:hover { color: var(--accent); border-color: var(--accent); }
+
+      /* ── Empty state ── */
+      .empty-state {
+        padding: 3rem 0;
+        text-align: center;
+        font-family: 'Playfair Display', Georgia, serif;
+        font-style: italic;
+        color: var(--muted);
+        font-size: 1.2rem;
+      }
+
+      /* ── Pagination ── */
+      .pagination {
+        display: flex;
+        gap: 1.5rem;
+        align-items: center;
+        margin-top: 0.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--rule-light);
+        font-family: 'Lora', Georgia, serif;
+        font-size: 0.875rem;
+      }
+      .pagination a {
+        color: var(--ink-mid);
+        text-decoration: none;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 1px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .pagination a:hover { color: var(--accent); border-color: var(--accent); }
     </style>
   </head>
   <body>
-    <header>
-      <h1>History</h1>
-      <p><a href="{{ url_for('index') }}">Back to current</a></p>
-    </header>
 
-    {% for entry in entries %}
-      <article>
-        <h2>{{ entry.headline.headline }}</h2>
-        {% if entry.headline.subheading %}
-          <p>{{ entry.headline.subheading }}</p>
-        {% endif %}
-        <p>Status: {{ entry.status }} | Completed at: {{ entry.completed_at }}</p>
-        {% if entry.image_url %}
-          <p><a href="{{ entry.image_url }}">View image</a></p>
-        {% endif %}
-        <p><a href="{{ url_for('metadata_file', filename=entry.metadata_path) }}">View metadata</a></p>
-      </article>
-    {% else %}
-      <p>No history available.</p>
-    {% endfor %}
+    <!-- 7-colour ePaper palette bar -->
+    <div class="palette-bar" aria-hidden="true">
+      <span style="background:#1A1714"></span>
+      <span style="background:#B82010"></span>
+      <span style="background:#2D7A3F"></span>
+      <span style="background:#1B4DB7"></span>
+      <span style="background:#C8A200"></span>
+      <span style="background:#C86010"></span>
+      <span style="background:#FEFAF2"></span>
+    </div>
 
-    <nav>
-      {% if has_prev %}
-        <a href="{{ url_for('history', page=page-1) }}">Previous</a>
-      {% endif %}
-      {% if has_next %}
-        <a href="{{ url_for('history', page=page+1) }}">Next</a>
-      {% endif %}
-    </nav>
+    <!-- Masthead -->
+    <div class="masthead">
+      <div class="masthead-inner">
+        <a href="{{ url_for('index') }}" class="masthead-title">Good News Display</a>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="container">
+      <div class="section-header">
+        <h1>Archive</h1>
+        <a href="{{ url_for('index') }}" class="back-link">&larr; Current edition</a>
+      </div>
+
+      {% for entry in entries %}
+        <div class="clipping {% if entry.status %}status-{{ entry.status }}{% endif %}">
+          <div class="clipping-thumb">
+            {% if entry.image_url %}
+              <a href="{{ entry.image_url }}" title="View full image">
+                <img src="{{ entry.image_url }}" alt="Display image" loading="lazy">
+              </a>
+            {% else %}
+              <div class="clipping-thumb-placeholder">No image</div>
+            {% endif %}
+          </div>
+
+          <div class="clipping-body">
+            {% if entry.headline %}
+              <div class="clipping-headline">{{ entry.headline.headline }}</div>
+              {% if entry.headline.subheading %}
+                <div class="clipping-subheading">{{ entry.headline.subheading }}</div>
+              {% endif %}
+            {% else %}
+              <div class="clipping-headline" style="color:var(--muted)">No headline recorded</div>
+            {% endif %}
+
+            <div class="clipping-meta">
+              <span class="pill pill-{{ entry.status }}">{{ entry.status }}</span>
+              <span class="clipping-timestamp">{{ entry.completed_at or entry.started_at or '' }}</span>
+            </div>
+
+            {% if entry.positive_articles %}
+              <div class="clipping-sources">
+                <em>Sources:</em>
+                {% for pa in entry.positive_articles %}{{ pa.article.title }}{% if not loop.last %} · {% endif %}{% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="clipping-links">
+              {% if entry.image_url %}
+                <a href="{{ entry.image_url }}">Full image</a>
+              {% endif %}
+              <a href="{{ url_for('metadata_file', filename=entry.metadata_path) }}">Metadata JSON</a>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty-state">No editions in the archive yet.</div>
+      {% endfor %}
+
+      <div class="pagination">
+        {% if has_prev %}
+          <a href="{{ url_for('history', page=page-1) }}">&larr; Newer</a>
+        {% endif %}
+        {% if has_next %}
+          <a href="{{ url_for('history', page=page+1) }}">Older &rarr;</a>
+        {% endif %}
+      </div>
+    </div>
+
   </body>
 </html>

@@ -22,19 +22,20 @@ def _build_prompt(positives: List[PositiveArticle]) -> str:
         {
             "title": item.article.title,
             "summary": item.article.summary,
-            "link": item.article.link,
-            "positivity": item.score,
             "rationale": item.rationale,
         }
         for item in positives
     ]
     articles_json = json.dumps(payload, ensure_ascii=False, indent=2)
     return (
-        "Compose a single upbeat news headline and optional subheading that combine "
-        "the positive elements from these RTÉ stories. The headline should be fun, "
-        "hopeful, and suitable for Irish readers. Provide JSON with keys 'headline' "
-        "and optional 'subheading'. Keep headline under 80 characters. Respond with "
-        "JSON only and no extra commentary.\n\n"
+        "You are writing for a good-news ePaper display aimed at Irish readers.\n"
+        "Compose a single upbeat headline and a short subheading from these positive stories.\n\n"
+        "Rules:\n"
+        "- Headline: 8 words or fewer, warm and hopeful in tone, Irish English\n"
+        "- Subheading: one sentence, adds context without repeating the headline\n"
+        "- No exclamation marks, no clickbait phrasing, no ALL CAPS\n"
+        "- Draw from the combined theme of all stories, not just one\n\n"
+        "Return ONLY a JSON object with keys 'headline' (string) and 'subheading' (string).\n\n"
         f"Stories:\n{articles_json}"
     )
 
@@ -79,7 +80,7 @@ def generate_headline(
             model=config.openai.text_model,
             input=prompt,
         )
-    except Exception as exc:  # pragma: no cover - network failure
+    except Exception as exc:
         raise HeadlineError(f"OpenAI headline call failed: {exc}") from exc
 
     if cancel_event and cancel_event.is_set():
@@ -88,7 +89,10 @@ def generate_headline(
     text = ""
     try:
         text = _extract_text(response)
-        payload = json.loads(text)
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0]
+        payload = json.loads(stripped)
     except Exception as exc:
         LOGGER.error("Failed to parse headline response: %s", text)
         raise HeadlineError("Unable to parse headline response") from exc
@@ -99,4 +103,9 @@ def generate_headline(
     subheading = payload.get("subheading")
     response_id = getattr(response, "id", None)
 
-    return HeadlineResult(headline=headline.strip(), subheading=subheading, prompt=prompt, response_id=response_id)
+    return HeadlineResult(
+        headline=headline.strip(),
+        subheading=subheading.strip() if subheading else None,
+        prompt=prompt,
+        response_id=response_id,
+    )

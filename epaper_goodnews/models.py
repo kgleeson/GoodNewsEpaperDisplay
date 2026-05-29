@@ -19,7 +19,7 @@ class Article:
     title: str
     summary: str
     link: str
-    published: datetime
+    published: Optional[datetime] = None
 
 
 @dataclass
@@ -40,7 +40,6 @@ class HeadlineResult:
 @dataclass
 class ImageResult:
     image_path: Path
-    display_path: Path
     prompt: str
     response_id: Optional[str] = None
     width: int = 800
@@ -54,6 +53,7 @@ class GenerationMetadata:
     completed_at: Optional[datetime] = None
     status: RunStatus = RunStatus.SUCCESS
     timezone: str = "Europe/Dublin"
+    device_type: str = ""
     articles: List[Article] = field(default_factory=list)
     positive_articles: List[PositiveArticle] = field(default_factory=list)
     headline: Optional[HeadlineResult] = None
