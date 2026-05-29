@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Good News Display</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
+      header { margin-bottom: 2rem; }
+      .status { margin-top: 1rem; font-size: 0.9rem; color: #555; }
+      .image-preview { max-width: 800px; border: 1px solid #ccc; background: #fff; padding: 1rem; }
+      img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+      .actions { margin-top: 1.5rem; }
+      button { padding: 0.6rem 1.2rem; font-size: 1rem; }
+      a { margin-right: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div id="app-state" data-run-id="{{ metadata.run_id if metadata and metadata.run_id else '' }}"></div>
+    <header>
+      <h1>Good News Display</h1>
+      <div id="headline-block" {% if not metadata %}style="display:none"{% endif %}>
+        <h2 id="headline-title">{{ metadata.headline.headline if metadata and metadata.headline else '' }}</h2>
+        <p id="headline-subheading">{{ metadata.headline.subheading if metadata and metadata.headline and metadata.headline.subheading else '' }}</p>
+        <div class="status">
+          <div>Last updated: <span id="last-updated">{{ metadata.completed_at if metadata else '' }}</span></div>
+          <div>Run status: <span id="run-status">{{ metadata.status if metadata else '' }}</span></div>
+        </div>
+      </div>
+      <div id="no-data" class="status" {% if metadata %}style="display:none"{% endif %}>
+        <p>No image generated yet.</p>
+      </div>
+      <div class="status">
+        <div>Scheduler next run: <span id="next-run">{{ next_run or 'unknown' }}</span></div>
+        <div>Job running: <span id="job-running">{{ 'yes' if job_running else 'no' }}</span></div>
+      </div>
+      <div id="status-message" class="status"></div>
+    </header>
+
+    <div class="image-preview" id="image-wrapper" {% if not image_url %}style="display:none"{% endif %}>
+      <img id="current-image" src="{{ image_url if image_url else '' }}" alt="Current display image">
+    </div>
+
+    <div class="actions">
+      <form id="generate-form" action="{{ url_for('generate') }}" method="post">
+        <button id="generate-button" type="submit">Generate New Image</button>
+      </form>
+      <p>
+        <a href="{{ url_for('history') }}">View history</a>
+      </p>
+    </div>
+
+    <script>
+      (function () {
+        const form = document.getElementById('generate-form');
+        if (!form) return;
+
+        const button = document.getElementById('generate-button');
+        const statusMessage = document.getElementById('status-message');
+        const jobRunningEl = document.getElementById('job-running');
+        const headlineBlock = document.getElementById('headline-block');
+        const noData = document.getElementById('no-data');
+        const headlineTitle = document.getElementById('headline-title');
+        const headlineSubtitle = document.getElementById('headline-subheading');
+        const lastUpdated = document.getElementById('last-updated');
+        const runStatus = document.getElementById('run-status');
+        const nextRun = document.getElementById('next-run');
+        const imageWrapper = document.getElementById('image-wrapper');
+        const imageEl = document.getElementById('current-image');
+        const appState = document.getElementById('app-state');
+
+        function setButtonState(disabled, label) {
+          if (!button) return;
+          button.disabled = disabled;
+          button.textContent = label;
+        }
+
+        function updateUI(data) {
+          if (!data) return;
+          if (jobRunningEl) {
+            jobRunningEl.textContent = data.job_running ? 'yes' : 'no';
+          }
+          if (nextRun && data.next_run !== undefined) {
+            nextRun.textContent = data.next_run || 'unknown';
+          }
+          if (data.headline && data.headline.headline) {
+            headlineTitle.textContent = data.headline.headline;
+            headlineSubtitle.textContent = data.headline.subheading || '';
+            if (headlineBlock) headlineBlock.style.display = '';
+            if (noData) noData.style.display = 'none';
+          }
+          if (lastUpdated && data.completed_at) {
+            lastUpdated.textContent = data.completed_at;
+          }
+          if (runStatus && data.status) {
+            runStatus.textContent = data.status;
+          }
+          if (appState && data.run_id) {
+            appState.dataset.runId = data.run_id;
+          }
+          if (imageEl && data.image) {
+            imageEl.src = data.image + '?t=' + Date.now();
+            if (imageWrapper) imageWrapper.style.display = '';
+          }
+        }
+
+        function pollStatus(previousRunId, attempt = 0) {
+          fetch('/api/current?ts=' + Date.now())
+            .then(resp => resp.json())
+            .then(data => {
+              updateUI(data);
+              const stillRunning = Boolean(data.job_running);
+              const runId = data.run_id || null;
+              const finished = !stillRunning && runId && runId !== previousRunId;
+              if (finished || (!stillRunning && attempt > 5)) {
+                setButtonState(false, 'Generate New Image');
+                if (statusMessage) {
+                  statusMessage.textContent = data.status === 'success'
+                    ? 'Generation complete.'
+                    : 'Generation finished with status: ' + (data.status || 'unknown');
+                }
+                return;
+              }
+              setTimeout(() => pollStatus(runId || previousRunId, attempt + 1), Math.min(5000, 1000 + attempt * 500));
+            })
+            .catch(err => {
+              console.error('Polling failed', err);
+              if (statusMessage) statusMessage.textContent = 'Error checking status. Please refresh later.';
+              setButtonState(false, 'Generate New Image');
+            });
+        }
+
+        form.addEventListener('submit', function (event) {
+          event.preventDefault();
+          if (statusMessage) statusMessage.textContent = 'Starting generation...';
+          const previousRunId = appState ? (appState.dataset.runId || null) : null;
+          setButtonState(true, 'Generating...');
+          fetch(form.action, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json' }
+          })
+            .then(resp => resp.json())
+            .then(data => {
+              if (statusMessage) statusMessage.textContent = data.started ? 'Generation in progress...' : 'Generation already running...';
+              pollStatus(previousRunId);
+            })
+            .catch(err => {
+              console.error('Failed to trigger generation', err);
+              if (statusMessage) statusMessage.textContent = 'Failed to start generation. Please try again.';
+              setButtonState(false, 'Generate New Image');
+            });
+        });
+      })();
+    </script>
+  </body>
+</html>

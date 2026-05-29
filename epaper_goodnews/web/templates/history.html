@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>History - Good News Display</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f7f7; }
+      article { background: #fff; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #ddd; }
+      header { margin-bottom: 2rem; }
+      nav { margin-top: 1rem; }
+      a { margin-right: 1rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>History</h1>
+      <p><a href="{{ url_for('index') }}">Back to current</a></p>
+    </header>
+
+    {% for entry in entries %}
+      <article>
+        <h2>{{ entry.headline.headline }}</h2>
+        {% if entry.headline.subheading %}
+          <p>{{ entry.headline.subheading }}</p>
+        {% endif %}
+        <p>Status: {{ entry.status }} | Completed at: {{ entry.completed_at }}</p>
+        {% if entry.image_url %}
+          <p><a href="{{ entry.image_url }}">View image</a></p>
+        {% endif %}
+        <p><a href="{{ url_for('metadata_file', filename=entry.metadata_path) }}">View metadata</a></p>
+      </article>
+    {% else %}
+      <p>No history available.</p>
+    {% endfor %}
+
+    <nav>
+      {% if has_prev %}
+        <a href="{{ url_for('history', page=page-1) }}">Previous</a>
+      {% endif %}
+      {% if has_next %}
+        <a href="{{ url_for('history', page=page+1) }}">Next</a>
+      {% endif %}
+    </nav>
+  </body>
+</html>
