@@ -26,17 +26,16 @@ class DisplayController:
             return False
 
     def display_image(self, image_path: Path) -> None:
-        if self._epd is None and not self.initialize():
-            LOGGER.error("Display not available; skipping image update")
-            return
-
         LOGGER.info("Updating display with %s", image_path)
         try:
+            from omni_epd import displayfactory  # type: ignore
+            epd = displayfactory.load_display_driver(self._device_type)
+            epd.prepare()
             img = Image.open(image_path).convert("RGB")
             if self._saturation != 1.0:
                 img = ImageEnhance.Color(img).enhance(self._saturation)
-            self._epd.display(img)
-            self._epd.sleep()
+            epd.display(img)
+            epd.sleep()
             img.close()
             LOGGER.info("Display updated and set to sleep")
         except Exception as exc:
