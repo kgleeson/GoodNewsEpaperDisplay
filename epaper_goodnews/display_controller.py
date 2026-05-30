@@ -7,12 +7,29 @@ from PIL import Image, ImageEnhance
 
 LOGGER = logging.getLogger(__name__)
 
+_GAMMA_LUT_CACHE: dict[float, list[int]] = {}
+
+
+def _gamma_lut(gamma: float) -> list[int]:
+    if gamma not in _GAMMA_LUT_CACHE:
+        _GAMMA_LUT_CACHE[gamma] = [int(255 * (i / 255) ** gamma) for i in range(256)]
+    return _GAMMA_LUT_CACHE[gamma]
+
 
 class DisplayController:
-    def __init__(self, device_type: str, saturation: float = 1.2, brightness: float = 1.3) -> None:
+    def __init__(
+        self,
+        device_type: str,
+        saturation: float = 1.1,
+        brightness: float = 1.2,
+        contrast: float = 0.9,
+        gamma: float = 0.8,
+    ) -> None:
         self._device_type = device_type
         self._saturation = saturation
         self._brightness = brightness
+        self._contrast = contrast
+        self._gamma = gamma
         self._epd = None
 
     def initialize(self) -> bool:
@@ -33,6 +50,11 @@ class DisplayController:
             epd = displayfactory.load_display_driver(self._device_type)
             epd.prepare()
             img = Image.open(image_path).convert("RGB")
+            if self._gamma != 1.0:
+                lut = _gamma_lut(self._gamma) * 3
+                img = img.point(lut)
+            if self._contrast != 1.0:
+                img = ImageEnhance.Contrast(img).enhance(self._contrast)
             if self._brightness != 1.0:
                 img = ImageEnhance.Brightness(img).enhance(self._brightness)
             if self._saturation != 1.0:

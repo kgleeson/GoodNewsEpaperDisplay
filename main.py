@@ -42,7 +42,13 @@ def init_components(
     config = load_config(env_path)
     setup_logging(config.storage.logs_path)
     client = create_client(config)
-    display = DisplayController(device_type=config.device_type, saturation=config.display_saturation, brightness=config.display_brightness)
+    display = DisplayController(
+        device_type=config.device_type,
+        saturation=config.display_saturation,
+        brightness=config.display_brightness,
+        contrast=config.display_contrast,
+        gamma=config.display_gamma,
+    )
     job_manager = JobManager()
     scheduler = SchedulerService(config.scheduler)
     return config, client, display, job_manager, scheduler
