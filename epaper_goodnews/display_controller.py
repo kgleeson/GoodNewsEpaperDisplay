@@ -3,14 +3,15 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 LOGGER = logging.getLogger(__name__)
 
 
 class DisplayController:
-    def __init__(self, device_type: str) -> None:
+    def __init__(self, device_type: str, saturation: float = 1.5) -> None:
         self._device_type = device_type
+        self._saturation = saturation
         self._epd = None
 
     def initialize(self) -> bool:
@@ -32,6 +33,8 @@ class DisplayController:
         LOGGER.info("Updating display with %s", image_path)
         try:
             img = Image.open(image_path).convert("RGB")
+            if self._saturation != 1.0:
+                img = ImageEnhance.Color(img).enhance(self._saturation)
             self._epd.display(img)
             self._epd.sleep()
             img.close()
