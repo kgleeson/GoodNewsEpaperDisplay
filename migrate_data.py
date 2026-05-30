@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
 
 
-def _transform_metadata(data: dict, images_target: Path) -> dict:
+def _transform_metadata(data: dict, images_source: Path, images_target: Path) -> dict:
     """Return a copy of data with old-format fields cleaned up."""
     data = dict(data)
 
@@ -46,16 +46,16 @@ def _transform_metadata(data: dict, images_target: Path) -> dict:
         # Remove obsolete BMP path — new pipeline only tracks the PNG
         image.pop("display_path", None)
 
-        # Rewrite image_path to just the filename so it's portable
+        # Rewrite image_path to point to target; validate PNG exists in source
         raw_path = image.get("image_path", "")
         if raw_path:
             filename = Path(raw_path).name
-            # Only update if the PNG exists in the target images dir
-            candidate = images_target / filename
-            if candidate.exists():
-                image["image_path"] = candidate.as_posix()
+            if not filename.endswith(".png"):
+                filename = Path(filename).with_suffix(".png").name
+            if (images_source / filename).exists():
+                image["image_path"] = (images_target / filename).as_posix()
             else:
-                LOGGER.warning("  Image file not found in target: %s", filename)
+                LOGGER.warning("  Image file not found in source: %s", filename)
 
         data["image"] = image
 
@@ -110,7 +110,7 @@ def migrate(source_dir: Path, target_dir: Path, *, dry_run: bool = False) -> Non
         target_images.mkdir(parents=True, exist_ok=True)
         target_metadata.mkdir(parents=True, exist_ok=True)
 
-    # --- Copy PNG images (skip BMP) ---
+    # --- Copy PNG images; convert BMP→PNG for runs that never had a PNG ---
     png_files = list(source_images.glob("*.png"))
     LOGGER.info("Found %d PNG images to migrate", len(png_files))
     copied_images = 0
@@ -143,7 +143,7 @@ def migrate(source_dir: Path, target_dir: Path, *, dry_run: bool = False) -> Non
             LOGGER.warning("  Skipping unreadable metadata %s: %s", meta_path.name, exc)
             continue
 
-        transformed = _transform_metadata(data, target_images)
+        transformed = _transform_metadata(data, source_images, target_images)
         LOGGER.info("  Migrating metadata: %s", meta_path.name)
         if not dry_run:
             dest.write_text(json.dumps(transformed, indent=2), encoding="utf-8")
