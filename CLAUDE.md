@@ -82,6 +82,8 @@ On the Pi, remove `EPAPER_DEVICE=omni_epd.mock` (or set `EPAPER_DEVICE=waveshare
 | `EPAPER_DATA_DIR` | `./data` | Output root |
 | `EPAPER_SCHEDULE_HOUR` / `MINUTE` | `8` / `0` | Daily run time (Europe/Dublin) |
 | `EPAPER_WEB_PORT` | `8000` | Flask port |
+| `EPAPER_DISPLAY_BRIGHTNESS` | `1.3` | PIL brightness multiplier applied before display (1.0 = no change) |
+| `EPAPER_DISPLAY_SATURATION` | `1.2` | PIL colour saturation multiplier applied before display (1.0 = no change) |
 
 ## Architecture
 

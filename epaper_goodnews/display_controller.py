@@ -9,9 +9,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 class DisplayController:
-    def __init__(self, device_type: str, saturation: float = 1.5) -> None:
+    def __init__(self, device_type: str, saturation: float = 1.2, brightness: float = 1.3) -> None:
         self._device_type = device_type
         self._saturation = saturation
+        self._brightness = brightness
         self._epd = None
 
     def initialize(self) -> bool:
@@ -32,6 +33,8 @@ class DisplayController:
             epd = displayfactory.load_display_driver(self._device_type)
             epd.prepare()
             img = Image.open(image_path).convert("RGB")
+            if self._brightness != 1.0:
+                img = ImageEnhance.Brightness(img).enhance(self._brightness)
             if self._saturation != 1.0:
                 img = ImageEnhance.Color(img).enhance(self._saturation)
             epd.display(img)
