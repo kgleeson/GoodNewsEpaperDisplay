@@ -35,33 +35,36 @@ class ImageGenerationError(RuntimeError):
     pass
 
 
-def _build_image_prompt(headline: HeadlineResult, positives: List[PositiveArticle]) -> str:
+def _build_image_prompt(
+    headline: HeadlineResult, positives: List[PositiveArticle]
+) -> str:
     descriptors = ", ".join(p.article.title for p in positives if p.article.title)
     if not descriptors:
         descriptors = headline.headline
+
     return (
-        f"Whimsical children's book watercolour illustration — loose hand-drawn outlines in dark brown or "
-        f"muted charcoal (not thick black), soft visible paper grain, translucent paint washes, gentle colour "
-        f"bleeding at edges, and an imperfect handmade quality throughout. "
-        f"STYLE: traditional watercolour picture-book page, not digital art. Think hand-painted storybook. "
-        f"Avoid: glossy digital art, vector art, thick black outlines, flat fills, hard edges, 3D rendering, "
-        f"anime, photorealism, or clean cartoon style. "
-        f"CHARACTERS: rounded and expressive with slightly oversized heads, simplified features, rosy cheeks, "
-        f"and warm smiles. Skin and clothing have soft watercolour shading with visible brush texture and "
-        f"uneven paint edges — no flat fills, no hard outlines. "
-        f"PALETTE: warm and muted — soft terracotta orange, dusty red, golden yellow, teal blue, sea green, "
-        f"and cream paper tones showing through washes. Colours are luminous but not harshly saturated. "
-        f"BACKGROUND: atmospheric and suggestive — soft watercolour sky, sea, and grass washes that bleed "
-        f"and blend loosely. Cream or warm white paper shows through in lighter areas. Keep backgrounds "
-        f"significantly lighter than figures so characters read clearly against them. "
-        f"COMPOSITION: one or two focal characters in the centre or foreground, with 1–3 supporting figures "
-        f"or scene elements at smaller scale — avoid an equal-weight lineup across the frame. "
-        f"Single cohesive scene with no panels, no text, no UI elements. "
-        f"TECHNICAL: the image renders on a 7-colour ePaper display (white, black, red, green, blue, yellow, "
-        f"orange) with dithering — the soft watercolour style works well here, but keep figure-to-background "
-        f"contrast clear and avoid very dark mid-tones that dither into muddy blobs. "
-        f"Incorporate themes from the headline '{headline.headline}'. "
-        f"Inspiration: {descriptors}."
+        f"Create a traditional children's picture-book watercolour illustration inspired by this theme: "
+        f"'{headline.headline}'. Do not include any visible text, lettering, captions, slogans, signs, or typography. "
+        f"Depict one gentle story moment rather than a poster or group portrait. "
+        f"Use one clear focal character or focal action, placed centrally or slightly off-centre, "
+        f"with a few smaller supporting characters, props, or symbolic background details arranged around it. "
+        f"Use varied scale, overlap, and asymmetry. Avoid a row of people facing the viewer. "
+        f"Visual style: handmade watercolour on warm cream paper, like a classic children's storybook page. "
+        f"Use soft translucent paint washes, visible paper grain, pale blooms, uneven pigment, loose wet edges, "
+        f"and gentle colour bleeding. Let the paint define some edges. "
+        f"Linework: thin, loose, slightly broken hand-drawn contours in warm dark brown or muted charcoal. "
+        f"The outlines should feel sketchy and imperfect, not bold or graphic. "
+        f"Characters: rounded, friendly, simplified storybook people with expressive poses, small dot eyes, "
+        f"simple curved noses, warm smiles, rosy cheeks, soft hair shapes, and softly shaded clothing. "
+        f"Palette: warm, cheerful, and muted watercolour tones — terracotta orange, coral red, golden yellow, "
+        f"sea green, muted teal, soft sky blue, and cream paper. Avoid harsh saturation and large flat colour blocks. "
+        f"Background: light, airy, and suggestive, with loosely painted scenery such as sky, sea, grass, buildings, "
+        f"landmarks, or symbolic objects. Keep the background secondary, softly washed, and lighter than the figures. "
+        f"Final image should feel painterly, organic, warm, celebratory, and handmade — a single illustrated scene "
+        f"from a children's book, not a poster, card, logo, comic panel, vector graphic, or clean digital cartoon. "
+        f"Designed for a 7-colour ePaper display, so keep the main shapes readable with clear figure/background separation, "
+        f"but preserve the soft watercolour texture. Avoid heavy black areas and muddy dark mid-tones. "
+        f"Scene inspiration: {descriptors}."
     )
 
 
@@ -98,6 +101,8 @@ def generate_image_assets(
             model=config.openai.image_model,
             prompt=prompt,
             size=request_size,  # type: ignore
+            quality="high",
+            background="opaque",
         )
     except Exception as exc:
         raise ImageGenerationError(f"OpenAI image generation failed: {exc}") from exc
