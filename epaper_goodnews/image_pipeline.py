@@ -40,12 +40,17 @@ def _build_image_prompt(headline: HeadlineResult, positives: List[PositiveArticl
     if not descriptors:
         descriptors = headline.headline
     return (
-        f"Create a lively watercolour illustration for a 7-colour ePaper display. "
-        f"The image will be rendered using only these 7 colours: white, black, red, green, blue, yellow, "
-        f"and orange — so design with bold, simple shapes, strong colour regions, and clear contrast that "
-        f"survive dithering to this limited palette. Use painterly washes, soft edges, and layered brush strokes. "
-        f"Avoid photorealism, fine gradients, grey tones, and hard geometric shapes. "
-        f"Compose as a single cohesive scene with no panels, no text, and no UI elements. "
+        f"Create a warm, joyful watercolour cartoon illustration in the style of a children's picture book. "
+        f"Characters should be round-faced with simple expressive features, rosy cheeks, and bold black outlines. "
+        f"Use vibrant watercolour washes in warm oranges, rich teals, sunny yellows, and earthy reds against "
+        f"a soft cream or off-white background that shows through the paint. "
+        f"Apply loose, gestural brushstrokes with visible texture and soft wet-on-wet blending for backgrounds. "
+        f"Keep shapes bold and simple with strong colour regions and clear outlines — avoid photorealism, fine "
+        f"gradients, grey tones, and hard geometric shapes. "
+        f"The overall mood should be celebratory and uplifting with happy, smiling characters. "
+        f"Compose as a single cohesive landscape scene with no panels, no text, and no UI elements. "
+        f"The image will be rendered on a 7-colour ePaper display (white, black, red, green, blue, yellow, orange) "
+        f"so use strong contrast and well-separated colour areas. "
         f"Incorporate themes from the headline '{headline.headline}'. "
         f"Inspiration: {descriptors}."
     )
