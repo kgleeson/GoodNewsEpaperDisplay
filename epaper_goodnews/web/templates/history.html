@@ -6,7 +6,7 @@
     <title>Archive — Good News Display</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Lora:ital,wght@0,400;0,500;1,400&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
       :root {
         --paper:       #FEFAF2;
@@ -35,12 +35,12 @@
       }
 
       /* ── Palette bar ── */
-      .palette-bar { display: flex; height: 7px; width: 100%; }
+      .palette-bar { display: flex; height: 6px; width: 100%; }
       .palette-bar span { flex: 1; }
 
       /* ── Masthead ── */
       .masthead {
-        max-width: 900px;
+        max-width: 960px;
         margin: 0 auto;
         padding: 1.75rem 1.5rem 0;
       }
@@ -66,151 +66,181 @@
 
       /* ── Container ── */
       .container {
-        max-width: 900px;
+        max-width: 960px;
         margin: 0 auto;
-        padding: 0 1.5rem 3rem;
+        padding: 0 1.5rem 4rem;
       }
 
       /* ── Section header ── */
       .section-header {
-        padding: 1.5rem 0 1rem;
+        padding: 1.5rem 0 1.1rem;
         display: flex;
         align-items: baseline;
         justify-content: space-between;
-        border-bottom: 1px solid var(--rule-light);
-        margin-bottom: 1.5rem;
+        border-bottom: 1px solid var(--rule);
+        margin-bottom: 2rem;
       }
       .section-header h1 {
         font-family: 'Playfair Display', Georgia, serif;
-        font-size: 1.6rem;
+        font-size: 1.7rem;
         font-weight: 400;
         font-style: italic;
         color: var(--ink);
       }
       .back-link {
-        font-family: 'Lora', Georgia, serif;
-        font-size: 0.875rem;
+        font-family: 'Courier Prime', 'Courier New', monospace;
+        font-size: 0.8rem;
         color: var(--muted);
         text-decoration: none;
-        border-bottom: 1px solid var(--rule);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--rule-light);
         padding-bottom: 1px;
         transition: color 0.15s, border-color 0.15s;
       }
       .back-link:hover { color: var(--accent); border-color: var(--accent); }
 
+      /* ── Entry list ── */
+      .entry-list { display: flex; flex-direction: column; gap: 0; }
+
       /* ── Clipping card ── */
       .clipping {
-        display: flex;
-        background: var(--paper-card);
-        border: 1px solid var(--rule-light);
-        border-left: 3px solid var(--rule);
-        margin-bottom: 1.25rem;
-        overflow: hidden;
-        transition: border-left-color 0.15s;
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        border-top: 1px solid var(--rule-light);
+        transition: background 0.12s;
       }
-      .clipping:hover { border-left-color: var(--accent); }
-      .clipping.status-success { border-left-color: var(--success-fg); }
-      .clipping.status-failed  { border-left-color: var(--accent); }
+      .clipping:last-child { border-bottom: 1px solid var(--rule-light); }
+      .clipping:hover { background: rgba(200,184,154,0.07); }
 
       /* Thumbnail */
       .clipping-thumb {
-        flex: 0 0 180px;
         position: relative;
         overflow: hidden;
-        background: var(--ink);
+        background: #2A2420;
+        align-self: stretch;
       }
-      .clipping-thumb a { display: block; height: 100%; }
+      .clipping-thumb a {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 130px;
+      }
       .clipping-thumb img {
-        width: 180px;
-        height: 108px;
+        width: 100%;
+        height: 100%;
         object-fit: cover;
         display: block;
-        opacity: 0.92;
-        transition: opacity 0.2s;
+        transition: opacity 0.2s, transform 0.3s ease;
       }
-      .clipping-thumb img:hover { opacity: 1; }
+      .clipping-thumb:hover img { opacity: 0.9; transform: scale(1.02); }
       .clipping-thumb-placeholder {
-        width: 180px;
-        height: 108px;
+        width: 100%;
+        height: 100%;
+        min-height: 130px;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #2A2420;
-        color: #6A5E58;
-        font-family: 'Courier New', monospace;
-        font-size: 0.62rem;
-        letter-spacing: 0.1em;
+        color: #5A4E48;
+        font-family: 'Courier Prime', monospace;
+        font-size: 0.6rem;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
+      }
+
+      /* Date tab */
+      .date-tab {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.3rem 0.5rem;
+        background: rgba(26,23,20,0.72);
+        backdrop-filter: blur(2px);
+        font-family: 'Courier Prime', 'Courier New', monospace;
+        font-size: 0.6rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(254,250,242,0.75);
+        text-align: center;
       }
 
       /* Body */
       .clipping-body {
-        flex: 1;
-        padding: 0.9rem 1.1rem 0.9rem 1rem;
+        padding: 1.1rem 1.25rem 1.1rem 1.1rem;
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
+        gap: 0.3rem;
         min-width: 0;
+        border-left: 2px solid transparent;
+        transition: border-color 0.15s;
+      }
+      .clipping:hover .clipping-body { border-left-color: var(--rule); }
+      .clipping.status-success:hover .clipping-body { border-left-color: var(--success-fg); }
+      .clipping.status-failed:hover .clipping-body { border-left-color: var(--accent); }
+
+      .clipping-date {
+        font-family: 'Courier Prime', 'Courier New', monospace;
+        font-size: 0.65rem;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.1rem;
       }
       .clipping-headline {
         font-family: 'Playfair Display', Georgia, serif;
-        font-size: 1.15rem;
+        font-size: 1.1rem;
         font-weight: 400;
         font-style: italic;
         color: var(--ink);
-        line-height: 1.25;
+        line-height: 1.3;
       }
       .clipping-subheading {
-        font-size: 0.875rem;
+        font-size: 0.82rem;
         color: var(--ink-mid);
-        line-height: 1.4;
+        line-height: 1.45;
       }
       .clipping-meta {
         display: flex;
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
-        margin-top: 0.15rem;
+        margin-top: 0.2rem;
       }
       .pill {
         display: inline-flex;
         align-items: center;
-        padding: 0.15rem 0.45rem;
+        padding: 0.12rem 0.4rem;
         border-radius: 2px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.62rem;
-        font-weight: bold;
+        font-family: 'Courier Prime', 'Courier New', monospace;
+        font-size: 0.6rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.07em;
       }
       .pill-success  { background: var(--success-bg); color: var(--success-fg); }
       .pill-failed   { background: var(--fail-bg);    color: var(--fail-fg); }
       .pill-cancelled { background: var(--warn-bg);   color: var(--warn-fg); }
-      .clipping-timestamp {
-        font-family: 'Courier New', monospace;
-        font-size: 0.65rem;
-        color: var(--muted);
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
+
       .clipping-sources {
         margin-top: auto;
-        padding-top: 0.4rem;
-        font-size: 0.72rem;
+        padding-top: 0.5rem;
+        font-size: 0.7rem;
         color: var(--muted);
         line-height: 1.5;
         border-top: 1px solid var(--rule-light);
       }
-      .clipping-sources em {
-        font-style: normal;
+      .clipping-sources strong {
         color: var(--ink-mid);
         font-weight: 500;
+        font-style: normal;
       }
       .clipping-links {
-        margin-top: 0.35rem;
+        margin-top: 0.4rem;
         display: flex;
-        gap: 1rem;
-        font-size: 0.75rem;
+        gap: 1.25rem;
+        font-size: 0.72rem;
+        align-items: center;
       }
       .clipping-links a {
         color: var(--muted);
@@ -225,8 +255,8 @@
         border: none;
         padding: 0;
         cursor: pointer;
-        font: inherit;
-        font-size: 0.75rem;
+        font-family: 'Lora', Georgia, serif;
+        font-size: 0.72rem;
         color: var(--muted);
         border-bottom: 1px solid var(--rule-light);
         padding-bottom: 1px;
@@ -236,7 +266,7 @@
 
       /* ── Empty state ── */
       .empty-state {
-        padding: 3rem 0;
+        padding: 4rem 0;
         text-align: center;
         font-family: 'Playfair Display', Georgia, serif;
         font-style: italic;
@@ -247,13 +277,17 @@
       /* ── Pagination ── */
       .pagination {
         display: flex;
-        gap: 1.5rem;
+        gap: 2rem;
         align-items: center;
-        margin-top: 0.5rem;
-        padding-top: 1rem;
+        justify-content: center;
+        margin-top: 2.5rem;
+        padding-top: 1.25rem;
         border-top: 1px solid var(--rule-light);
-        font-family: 'Lora', Georgia, serif;
-        font-size: 0.875rem;
+        font-family: 'Courier Prime', 'Courier New', monospace;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
       }
       .pagination a {
         color: var(--ink-mid);
@@ -263,6 +297,11 @@
         transition: color 0.15s, border-color 0.15s;
       }
       .pagination a:hover { color: var(--accent); border-color: var(--accent); }
+
+      @media (max-width: 600px) {
+        .clipping { grid-template-columns: 120px 1fr; }
+        .clipping-headline { font-size: 0.95rem; }
+      }
     </style>
   </head>
   <body>
@@ -292,61 +331,64 @@
         <a href="{{ url_for('index') }}" class="back-link">&larr; Current edition</a>
       </div>
 
-      {% for entry in entries %}
-        <div class="clipping {% if entry.status %}status-{{ entry.status }}{% endif %}">
-          <div class="clipping-thumb">
-            {% if entry.image_url %}
-              <a href="{{ entry.image_url }}" title="View full image">
-                <img src="{{ entry.image_url }}" alt="Display image" loading="lazy">
-              </a>
-            {% else %}
-              <div class="clipping-thumb-placeholder">No image</div>
-            {% endif %}
-          </div>
-
-          <div class="clipping-body">
-            {% if entry.headline %}
-              <div class="clipping-headline">{{ entry.headline.headline }}</div>
-              {% if entry.headline.subheading %}
-                <div class="clipping-subheading">{{ entry.headline.subheading }}</div>
+      <div class="entry-list">
+        {% for entry in entries %}
+          <div class="clipping {% if entry.status %}status-{{ entry.status }}{% endif %}">
+            <div class="clipping-thumb">
+              {% if entry.image_url %}
+                <a href="{{ entry.image_url }}" title="View full image">
+                  <img src="{{ entry.image_url }}" alt="Display image" loading="lazy">
+                </a>
+              {% else %}
+                <div class="clipping-thumb-placeholder">No image</div>
               {% endif %}
-            {% else %}
-              <div class="clipping-headline" style="color:var(--muted)">No headline recorded</div>
-            {% endif %}
-
-            <div class="clipping-meta">
-              <span class="pill pill-{{ entry.status }}">{{ entry.status }}</span>
-              <span class="clipping-timestamp">{{ entry.completed_at or entry.started_at or '' }}</span>
+              <div class="date-tab">{{ (entry.completed_at or entry.started_at or '')[:10] }}</div>
             </div>
 
-            {% if entry.positive_articles %}
-              <div class="clipping-sources">
-                <em>Sources:</em>
-                {% for pa in entry.positive_articles %}{{ pa.article.title }}{% if not loop.last %} · {% endif %}{% endfor %}
+            <div class="clipping-body">
+              {% if entry.headline %}
+                <div class="clipping-headline">{{ entry.headline.headline }}</div>
+                {% if entry.headline.subheading %}
+                  <div class="clipping-subheading">{{ entry.headline.subheading }}</div>
+                {% endif %}
+              {% else %}
+                <div class="clipping-headline" style="color:var(--muted)">No headline recorded</div>
+              {% endif %}
+
+              <div class="clipping-meta">
+                <span class="pill pill-{{ entry.status }}">{{ entry.status }}</span>
               </div>
-            {% endif %}
 
-            <div class="clipping-links">
-              {% if entry.image_url %}
-                <a href="{{ entry.image_url }}">Full image</a>
+              {% if entry.positive_articles %}
+                <div class="clipping-sources">
+                  <strong>Sources:</strong>
+                  {% for pa in entry.positive_articles %}{{ pa.article.title }}{% if not loop.last %} · {% endif %}{% endfor %}
+                </div>
               {% endif %}
-              <a href="{{ url_for('metadata_file', filename=entry.metadata_path) }}">Metadata JSON</a>
-              {% if entry.image_url %}
-                <form method="post" action="{{ url_for('push_to_display', run_id=entry.metadata_path[:-5]) }}" style="display:inline">
-                  <button type="submit" class="btn-push">Push to display</button>
-                </form>
-              {% endif %}
+
+              <div class="clipping-links">
+                {% if entry.image_url %}
+                  <a href="{{ entry.image_url }}">Full image</a>
+                {% endif %}
+                <a href="{{ url_for('metadata_file', filename=entry.metadata_path) }}">Metadata JSON</a>
+                {% if entry.image_url %}
+                  <form method="post" action="{{ url_for('push_to_display', run_id=entry.metadata_path[:-5]) }}" style="display:inline">
+                    <button type="submit" class="btn-push">Push to display</button>
+                  </form>
+                {% endif %}
+              </div>
             </div>
           </div>
-        </div>
-      {% else %}
-        <div class="empty-state">No editions in the archive yet.</div>
-      {% endfor %}
+        {% else %}
+          <div class="empty-state">No editions in the archive yet.</div>
+        {% endfor %}
+      </div>
 
       <div class="pagination">
         {% if has_prev %}
           <a href="{{ url_for('history', page=page-1) }}">&larr; Newer</a>
         {% endif %}
+        <span>Page {{ page }}</span>
         {% if has_next %}
           <a href="{{ url_for('history', page=page+1) }}">Older &rarr;</a>
         {% endif %}

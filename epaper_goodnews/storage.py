@@ -59,7 +59,7 @@ def update_current(storage: StorageConfig, image_path: Path, metadata_path: Path
 
 def list_metadata_files(storage: StorageConfig) -> List[Path]:
     files = list(storage.metadata_path.glob("*.json"))
-    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    files.sort(key=lambda path: path.stem, reverse=True)
     return files
 
 
