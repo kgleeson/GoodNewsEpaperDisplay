@@ -18,6 +18,7 @@ from flask import (
 )
 
 from ..config import AppConfig
+from ..display_controller import DisplayController
 from ..job_manager import JobManager
 from ..scheduler import SchedulerService
 from ..storage import StorageConfig, list_metadata_files, load_health
@@ -32,6 +33,7 @@ class AppState:
     job_manager: JobManager
     scheduler: SchedulerService
     trigger_generation: Callable[[], bool]
+    display: DisplayController
 
 
 def _load_metadata(path: Path) -> Optional[dict]:
@@ -123,6 +125,26 @@ def create_app(state: AppState) -> Flask:
         if wants_json or request.is_json:
             return jsonify(payload)
         return redirect(url_for("index"))
+
+    @app.post("/push/<run_id>")
+    def push_to_display(run_id: str):
+        image_path = state.storage.images_path / f"{run_id}.png"
+        if not image_path.exists():
+            abort(404)
+        try:
+            state.display.display_image(image_path)
+            ok = True
+            message = "Image pushed to display"
+        except Exception as exc:
+            LOGGER.error("Push to display failed: %s", exc)
+            ok = False
+            message = str(exc)
+        wants_json = request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html
+        if wants_json or request.is_json:
+            return jsonify({"ok": ok, "message": message})
+        if ok:
+            return redirect(url_for("history"))
+        abort(500)
 
     @app.get("/api/current")
     def api_current():

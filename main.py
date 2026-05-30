@@ -95,6 +95,7 @@ def serve(
         job_manager=job_manager,
         scheduler=scheduler,
         trigger_generation=trigger,
+        display=display,
     )
     flask_app = create_app(state)
 

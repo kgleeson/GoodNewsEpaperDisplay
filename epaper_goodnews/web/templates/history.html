@@ -220,6 +220,19 @@
         transition: color 0.15s, border-color 0.15s;
       }
       .clipping-links a:hover { color: var(--accent); border-color: var(--accent); }
+      .btn-push {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.75rem;
+        color: var(--muted);
+        border-bottom: 1px solid var(--rule-light);
+        padding-bottom: 1px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .btn-push:hover { color: var(--accent); border-color: var(--accent); }
 
       /* ── Empty state ── */
       .empty-state {
@@ -318,6 +331,11 @@
                 <a href="{{ entry.image_url }}">Full image</a>
               {% endif %}
               <a href="{{ url_for('metadata_file', filename=entry.metadata_path) }}">Metadata JSON</a>
+              {% if entry.image_url %}
+                <form method="post" action="{{ url_for('push_to_display', run_id=entry.metadata_path[:-5]) }}" style="display:inline">
+                  <button type="submit" class="btn-push">Push to display</button>
+                </form>
+              {% endif %}
             </div>
           </div>
         </div>
