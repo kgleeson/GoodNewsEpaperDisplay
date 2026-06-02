@@ -59,6 +59,12 @@ class DisplayController:
                 img = ImageEnhance.Brightness(img).enhance(self._brightness)
             if self._saturation != 1.0:
                 img = ImageEnhance.Color(img).enhance(self._saturation)
+            # Shift slightly cool: the display's yellow/orange inks are olive/brown,
+            # so nudging warm tones toward blue before quantization reduces that cast.
+            r, g, b = img.split()
+            r = r.point([int(i * 0.90) for i in range(256)])
+            b = b.point([min(255, int(i * 1.12)) for i in range(256)])
+            img = Image.merge("RGB", (r, g, b))
             epd.display(img)
             epd.sleep()
             img.close()
