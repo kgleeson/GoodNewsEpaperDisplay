@@ -38,41 +38,37 @@ class ImageGenerationError(RuntimeError):
 def _build_image_prompt(
     headline: HeadlineResult, positives: List[PositiveArticle]
 ) -> str:
-    descriptors = ", ".join(p.article.title for p in positives if p.article.title)
+    descriptors = "; ".join(p.article.title for p in positives if p.article.title)
     if not descriptors:
         descriptors = headline.headline
 
     return (
-        f"Create a watercolour illustration inspired by this Irish news story: '{headline.headline}'. "
-        f"The image should evoke the specific story — its setting, action, people, or symbolic meaning. "
+        f"Create a watercolour illustration that depicts the subject of a specific news story. "
+        f"THE NEWS (this is what to illustrate — be literal and specific to it): {descriptors}. "
+        f"Overall theme: {headline.headline}. "
+        f"Pick the SINGLE most visually concrete subject from the news above and depict that one thing directly. "
+        f"Show the actual subject of the story — the specific people, place, activity, object, or event it describes. "
+        f"For example: an exam story shows students at desks writing; a renovation story shows a building being repaired; "
+        f"a climate story shows the specific weather, energy, or nature element involved; a sports story shows that sport. "
+        f"Do NOT default to generic scenery. Do NOT add rolling hills, cottages, castles, stone walls, or pastoral countryside "
+        f"unless the news story is specifically about those things. The setting must come from the news, not from a generic template. "
         f"Do not include any text, lettering, captions, signs, or typography. "
-        f"COMPOSITION: Fill the entire frame with rich painted colour. "
-        f"Choose the most visually compelling aspect of the story — characters in action, a meaningful landscape, "
-        f"symbolic objects, animals, or a combination. "
-        f"Characters are not required; if the story is better told through place, nature, or symbolic imagery, prefer that. "
-        f"When characters appear: natural human proportions, expressive realistic faces, "
-        f"painted and integrated into the scene — not cartoon-styled, not simplified. "
-        f"STYLE: Rich painterly handmade watercolour. Loose wet washes, visible pigment blooms, "
-        f"wet-on-wet blending, natural colour bleeding at edges. "
-        f"High-quality illustrated book aesthetic — expressive and human, not cartoon. "
+        f"COMPOSITION: Fill the frame. Focus on the subject up close — a clear, readable focal point that fills most of the image. "
+        f"Avoid wide empty landscapes; favour the people, object, or action that the story is actually about. "
+        f"When characters appear: natural human proportions, expressive realistic faces, painted and integrated — not cartoon-styled. "
+        f"STYLE: Rich painterly handmade watercolour. Loose wet washes, visible pigment blooms, wet-on-wet blending, "
+        f"natural colour bleeding at edges. High-quality illustrated book aesthetic — expressive and human, not cartoon. "
         f"Thin organic dark-brown linework, loose and selective. "
-        f"COLOUR AND MOOD: Let the story guide the palette — it does not need to be warm or sunset-toned. "
-        f"Use a balanced mix of warm and cool tones appropriate to the subject. "
-        f"Greens, whites, earth tones, and muted teals all work well on this display. "
-        f"DISPLAY CONSTRAINTS (7-colour e-paper — actual ink appearances): "
-        f"black=dark navy, white=white, green=forest green, "
-        f"'blue' ink=PURPLE/VIOLET (avoid large areas of pure blue), "
-        f"'yellow' ink=OLIVE/YELLOW-GREEN (avoid yellow as a dominant tone), "
-        f"'orange' ink=copper brown. "
-        f"For sky: avoid pure blue (renders purple). "
-        f"Good alternatives: overcast grey-green Irish sky, golden-hour or dawn sky, "
-        f"teal or cyan sky (teal maps to green on display), or a composition where sky is minimal. "
-        f"Clothing: avoid yellow or blue. Use red, green, orange, brown, or white. "
-        f"Tones: use BRIGHT MID-TONES throughout — dark shades of any colour collapse to near-black. "
-        f"No large deeply shadowed areas. Foliage: bright medium green, not dark. "
-        f"White: keep clean and bright — any warm tint renders as olive-yellow. "
-        f"Not a poster, not flat vector art, not cartoon illustration, no typography. "
-        f"Scene inspiration: {descriptors}."
+        f"LIGHT AND COLOUR: Keep the image BRIGHT and well-lit overall — like clear daylight, not dusk or gloom. "
+        f"Let the subject guide the palette; use whatever colours the story calls for, warm or cool. "
+        f"Avoid an overall dark, heavy, or shadowy image — favour light, open, brightly-lit scenes. "
+        f"DISPLAY CONSTRAINTS (7-colour e-paper, actual ink appearances): "
+        f"the 'blue' ink renders PURPLE/VIOLET — avoid large pure-blue areas (skies, water); use teal/cyan instead (maps to green), "
+        f"or keep sky minimal. The 'yellow' ink renders OLIVE — avoid yellow as a dominant tone. "
+        f"Avoid yellow or blue clothing; use red, green, orange, brown, or white. "
+        f"Use BRIGHT MID-TONES — dark shades of any colour collapse to near-black, so avoid large deeply-shadowed areas. "
+        f"Keep whites clean and bright (any warm tint renders olive); keep foliage bright medium green, not dark. "
+        f"Not a poster, not flat vector art, not cartoon illustration, no typography."
     )
 
 
