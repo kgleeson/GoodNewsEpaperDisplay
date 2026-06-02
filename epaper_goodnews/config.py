@@ -56,9 +56,9 @@ class AppConfig:
     positivity_sample_size: int = 8
     positivity_select_count: int = 3
     display_saturation: float = 1.4
-    display_brightness: float = 1.0
-    display_contrast: float = 1.15
-    display_gamma: float = 1.0
+    display_brightness: float = 1.05
+    display_contrast: float = 1.05
+    display_gamma: float = 0.88
 
 
 def _ensure_directories(storage: StorageConfig) -> None:
@@ -131,9 +131,9 @@ def load_config(env_path: Optional[Path] = None) -> AppConfig:
         positivity_sample_size=sample_size,
         positivity_select_count=select_count,
         display_saturation=float(os.getenv("EPAPER_DISPLAY_SATURATION", 1.4)),
-        display_brightness=float(os.getenv("EPAPER_DISPLAY_BRIGHTNESS", 1.0)),
-        display_contrast=float(os.getenv("EPAPER_DISPLAY_CONTRAST", 1.15)),
-        display_gamma=float(os.getenv("EPAPER_DISPLAY_GAMMA", 1.0)),
+        display_brightness=float(os.getenv("EPAPER_DISPLAY_BRIGHTNESS", 1.05)),
+        display_contrast=float(os.getenv("EPAPER_DISPLAY_CONTRAST", 1.05)),
+        display_gamma=float(os.getenv("EPAPER_DISPLAY_GAMMA", 0.88)),
     )
 
     return config
