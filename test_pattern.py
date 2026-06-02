@@ -132,7 +132,7 @@ def main() -> None:
         from epaper_goodnews.display_controller import DisplayController
 
         cfg = load_config()
-        device = os.getenv("EPAPER_DEVICE", cfg.epaper_device)
+        device = os.getenv("EPAPER_DEVICE", cfg.device_type)
 
         if args.adjust:
             ctrl = DisplayController(
