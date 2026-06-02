@@ -58,7 +58,7 @@ class AppConfig:
     display_saturation: float = 1.3
     display_brightness: float = 1.0
     display_contrast: float = 1.05
-    display_gamma: float = 1.0
+    display_gamma: float = 0.93
 
 
 def _ensure_directories(storage: StorageConfig) -> None:
@@ -133,7 +133,7 @@ def load_config(env_path: Optional[Path] = None) -> AppConfig:
         display_saturation=float(os.getenv("EPAPER_DISPLAY_SATURATION", 1.3)),
         display_brightness=float(os.getenv("EPAPER_DISPLAY_BRIGHTNESS", 1.0)),
         display_contrast=float(os.getenv("EPAPER_DISPLAY_CONTRAST", 1.05)),
-        display_gamma=float(os.getenv("EPAPER_DISPLAY_GAMMA", 1.0)),
+        display_gamma=float(os.getenv("EPAPER_DISPLAY_GAMMA", 0.93)),
     )
 
     return config
