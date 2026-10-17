@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 import signal
 from pathlib import Path
+from typing import Optional
 
 import typer
 from openai import OpenAI
@@ -75,8 +76,9 @@ def generate():
 
 @app.command()
 def serve(
-    host: str | None = typer.Option(None),
-    port: int | None = typer.Option(None),
+    # Typer 0.12 can't parse `X | None` option types; keep Optional here.
+    host: Optional[str] = typer.Option(None),  # noqa: UP045
+    port: Optional[int] = typer.Option(None),  # noqa: UP045
 ):
     """Start the combined scheduler and web server. Set EPAPER_DEVICE=omni_epd.mock to skip hardware."""
     config, client, display, job_manager, scheduler = init_components()
