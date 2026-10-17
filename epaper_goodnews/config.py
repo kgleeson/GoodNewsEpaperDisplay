@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -11,15 +11,26 @@ DEFAULT_TIMEZONE = "Europe/Dublin"
 DEFAULT_SCHEDULE_HOUR = 8
 DEFAULT_SCHEDULE_MINUTE = 0
 DEFAULT_DEVICE = "waveshare_epd.epd7in3f"
+DEFAULT_TEXT_MODEL = "gpt-6-luna"
+DEFAULT_IMAGE_MODEL = "gpt-image-2.5-sunburst"
+DEFAULT_IMAGE_SIZE = "1600x960"
+DEFAULT_IMAGE_QUALITY = "high"
+DEFAULT_POSITIVITY_MIN_SCORE = 0.6
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
 class OpenAIConfig:
-    api_key: Optional[str]
-    text_model: str = "gpt-4o-mini"
-    image_model: str = "gpt-image-1"
-    image_size: str = "1536x1024"
-    organization: Optional[str] = None
+    api_key: str | None
+    text_model: str = DEFAULT_TEXT_MODEL
+    image_model: str = DEFAULT_IMAGE_MODEL
+    image_size: str = DEFAULT_IMAGE_SIZE
+    image_quality: str = DEFAULT_IMAGE_QUALITY
+    organization: str | None = None
+    # Reasoning effort per text task; None omits the parameter (non-reasoning models).
+    positivity_reasoning_effort: str | None = "none"
+    headline_reasoning_effort: str | None = "low"
 
 
 @dataclass
@@ -53,8 +64,8 @@ class AppConfig:
     web: WebConfig = field(default_factory=WebConfig)
     device_type: str = DEFAULT_DEVICE
     rss_feed_url: str = "https://www.rte.ie/feeds/rss/?index=%2Fnews%2F"
-    positivity_sample_size: int = 8
     positivity_select_count: int = 3
+    positivity_min_score: float = DEFAULT_POSITIVITY_MIN_SCORE
     display_saturation: float = 1.2
     display_brightness: float = 1.0
     display_contrast: float = 1.0
@@ -86,7 +97,15 @@ def _build_storage(base_path: Path) -> StorageConfig:
     return storage
 
 
-def load_config(env_path: Optional[Path] = None) -> AppConfig:
+def _optional_env(name: str, default: str) -> str | None:
+    """Read an env var where an explicitly empty value means "unset" (None)."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip() or None
+
+
+def load_config(env_path: Path | None = None) -> AppConfig:
     if env_path is None:
         env_path = Path.cwd() / ".env"
 
@@ -106,16 +125,22 @@ def load_config(env_path: Optional[Path] = None) -> AppConfig:
     web_host = os.getenv("EPAPER_WEB_HOST", "0.0.0.0")
     web_port = int(os.getenv("EPAPER_WEB_PORT", 8000))
 
-    sample_size = int(os.getenv("EPAPER_POSITIVITY_SAMPLE_SIZE", 8))
+    if os.getenv("EPAPER_POSITIVITY_SAMPLE_SIZE"):
+        LOGGER.warning(
+            "EPAPER_POSITIVITY_SAMPLE_SIZE is no longer used; all fetched articles are scored"
+        )
     select_count = int(os.getenv("EPAPER_POSITIVITY_SELECT_COUNT", 3))
 
     config = AppConfig(
         openai=OpenAIConfig(
             api_key=openai_api_key,
             organization=openai_org,
-            text_model=os.getenv("EPAPER_TEXT_MODEL", "gpt-4o-mini"),
-            image_model=os.getenv("EPAPER_IMAGE_MODEL", "gpt-image-1"),
-            image_size=os.getenv("EPAPER_IMAGE_SIZE", "1536x1024"),
+            text_model=os.getenv("EPAPER_TEXT_MODEL", DEFAULT_TEXT_MODEL),
+            image_model=os.getenv("EPAPER_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
+            image_size=os.getenv("EPAPER_IMAGE_SIZE", DEFAULT_IMAGE_SIZE),
+            image_quality=os.getenv("EPAPER_IMAGE_QUALITY", DEFAULT_IMAGE_QUALITY),
+            positivity_reasoning_effort=_optional_env("EPAPER_POSITIVITY_REASONING_EFFORT", "none"),
+            headline_reasoning_effort=_optional_env("EPAPER_HEADLINE_REASONING_EFFORT", "low"),
         ),
         storage=_build_storage(data_dir),
         scheduler=SchedulerConfig(
@@ -128,8 +153,10 @@ def load_config(env_path: Optional[Path] = None) -> AppConfig:
         rss_feed_url=os.getenv(
             "EPAPER_RSS_FEED_URL", "https://www.rte.ie/feeds/rss/?index=%2Fnews%2F"
         ),
-        positivity_sample_size=sample_size,
         positivity_select_count=select_count,
+        positivity_min_score=float(
+            os.getenv("EPAPER_POSITIVITY_MIN_SCORE", DEFAULT_POSITIVITY_MIN_SCORE)
+        ),
         display_saturation=float(os.getenv("EPAPER_DISPLAY_SATURATION", 1.2)),
         display_brightness=float(os.getenv("EPAPER_DISPLAY_BRIGHTNESS", 1.0)),
         display_contrast=float(os.getenv("EPAPER_DISPLAY_CONTRAST", 1.0)),

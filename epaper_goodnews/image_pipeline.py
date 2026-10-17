@@ -2,42 +2,42 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from datetime import datetime
 from io import BytesIO
 from threading import Event
-from typing import List, Optional
 
 from openai import OpenAI
-from PIL import Image
+from PIL import Image, ImageOps
 from PIL.Image import Resampling
 
 from .config import AppConfig, StorageConfig
 from .models import HeadlineResult, ImageResult, PositiveArticle
+from .structured import usage_dict
 
 LOGGER = logging.getLogger(__name__)
 
 DISPLAY_WIDTH = 800
 DISPLAY_HEIGHT = 480
 
-ALLOWED_IMAGE_SIZES = {
-    "auto",
-    "1024x1024",
-    "1536x1024",
-    "1024x1536",
-    "1792x1024",
-    "1024x1792",
-    "256x256",
-    "512x512",
-}
+# gpt-image-1 family (gpt-image-1, -mini, 1.5) only accepts these fixed sizes.
+GPT_IMAGE_1_SIZES = {"auto", "1024x1024", "1536x1024", "1024x1536"}
+
+# gpt-image-2 and later accept custom WxH within these limits.
+CUSTOM_SIZE_EDGE_MULTIPLE = 16
+CUSTOM_SIZE_MAX_EDGE = 3840
+CUSTOM_SIZE_MAX_RATIO = 3.0
+CUSTOM_SIZE_MIN_PIXELS = 655_360
+CUSTOM_SIZE_MAX_PIXELS = 8_294_400
+
+_SIZE_RE = re.compile(r"^(\d+)x(\d+)$")
 
 
 class ImageGenerationError(RuntimeError):
     pass
 
 
-def _build_image_prompt(
-    headline: HeadlineResult, positives: List[PositiveArticle]
-) -> str:
+def _build_image_prompt(headline: HeadlineResult, positives: list[PositiveArticle]) -> str:
     descriptors = "; ".join(p.article.title for p in positives if p.article.title)
     if not descriptors:
         descriptors = headline.headline
@@ -72,6 +72,46 @@ def _build_image_prompt(
     )
 
 
+def validate_image_size(model: str, size: str) -> None:
+    """Raise ImageGenerationError if ``size`` is not valid for ``model``."""
+    if size == "auto":
+        return
+    if model.startswith("gpt-image-1"):
+        if size not in GPT_IMAGE_1_SIZES:
+            raise ImageGenerationError(
+                f"Image size {size!r} is not supported by {model}; "
+                f"use one of {sorted(GPT_IMAGE_1_SIZES)}"
+            )
+        return
+
+    match = _SIZE_RE.match(size)
+    if not match:
+        raise ImageGenerationError(f"Image size {size!r} must be 'auto' or WIDTHxHEIGHT")
+    width, height = int(match.group(1)), int(match.group(2))
+    problems = []
+    if width % CUSTOM_SIZE_EDGE_MULTIPLE or height % CUSTOM_SIZE_EDGE_MULTIPLE:
+        problems.append(f"edges must be multiples of {CUSTOM_SIZE_EDGE_MULTIPLE}")
+    if max(width, height) > CUSTOM_SIZE_MAX_EDGE:
+        problems.append(f"longest edge must be <= {CUSTOM_SIZE_MAX_EDGE}")
+    if min(width, height) == 0 or max(width, height) / min(width, height) > CUSTOM_SIZE_MAX_RATIO:
+        problems.append("aspect ratio must be at most 3:1")
+    if not CUSTOM_SIZE_MIN_PIXELS <= width * height <= CUSTOM_SIZE_MAX_PIXELS:
+        problems.append(
+            f"total pixels must be between {CUSTOM_SIZE_MIN_PIXELS:,} and {CUSTOM_SIZE_MAX_PIXELS:,}"
+        )
+    if problems:
+        raise ImageGenerationError(
+            f"Image size {size!r} is not valid for {model}: " + "; ".join(problems)
+        )
+
+
+def fit_to_display(image: Image.Image) -> Image.Image:
+    """Centre-crop to the panel's aspect ratio and resize, without stretching."""
+    return ImageOps.fit(
+        image, (DISPLAY_WIDTH, DISPLAY_HEIGHT), method=Resampling.LANCZOS, centering=(0.5, 0.5)
+    )
+
+
 def _decode_base64_image(b64_data: str) -> Image.Image:
     raw = base64.b64decode(b64_data)
     return Image.open(BytesIO(raw)).convert("RGB")
@@ -83,9 +123,9 @@ def generate_image_assets(
     storage: StorageConfig,
     client: OpenAI,
     headline: HeadlineResult,
-    positives: List[PositiveArticle],
+    positives: list[PositiveArticle],
     run_id: str,
-    cancel_event: Optional[Event] = None,
+    cancel_event: Event | None = None,
 ) -> ImageResult:
     if cancel_event and cancel_event.is_set():
         raise ImageGenerationError("Image generation cancelled")
@@ -94,18 +134,14 @@ def generate_image_assets(
     LOGGER.info("Requesting image generation from OpenAI")
 
     request_size = config.openai.image_size
-    if request_size not in ALLOWED_IMAGE_SIZES:
-        LOGGER.warning(
-            "Image size %s unsupported; falling back to 1536x1024", request_size
-        )
-        request_size = "1536x1024"
+    validate_image_size(config.openai.image_model, request_size)
 
     try:
         response = client.images.generate(
             model=config.openai.image_model,
             prompt=prompt,
-            size=request_size,  # type: ignore
-            quality="high",
+            size=request_size,
+            quality=config.openai.image_quality,  # type: ignore[arg-type]
             background="opaque",
         )
     except Exception as exc:
@@ -124,8 +160,14 @@ def generate_image_assets(
     if not isinstance(image_data, str) or not image_data:
         raise ImageGenerationError("Image data is missing or not a valid string")
 
+    usage = usage_dict(response)
+    if usage:
+        LOGGER.info("OpenAI image usage: %s", usage)
+
     base_image = _decode_base64_image(image_data)
-    web_image = base_image.resize((DISPLAY_WIDTH, DISPLAY_HEIGHT), Resampling.LANCZOS)
+    source_size = f"{base_image.width}x{base_image.height}"
+    LOGGER.info("Received %s image (requested %s)", source_size, request_size)
+    web_image = fit_to_display(base_image)
 
     timestamp = datetime.now().strftime("%Y-%m-%d")
     png_name = f"{timestamp}-{run_id}.png"
@@ -140,4 +182,7 @@ def generate_image_assets(
         response_id=getattr(response, "id", None),
         width=DISPLAY_WIDTH,
         height=DISPLAY_HEIGHT,
+        requested_size=request_size,
+        source_size=source_size,
+        usage=usage,
     )
