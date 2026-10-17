@@ -33,3 +33,6 @@ data/
 
 # macOS
 .DS_Store
+
+# Mock display preview
+mock_output.png

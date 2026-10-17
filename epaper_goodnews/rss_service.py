@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Iterable, List, Optional
 from zoneinfo import ZoneInfo
 
 import feedparser
+import requests
 
 from .models import Article
 
 LOGGER = logging.getLogger(__name__)
+
+REQUEST_TIMEOUT = (10, 30)  # connect, read (seconds)
+RETRY_DELAYS_SECONDS = (30, 120)
+USER_AGENT = "epaper-goodnews/0.1"
 
 
 def _parse_datetime(entry: dict, default_tz: ZoneInfo) -> datetime:
@@ -37,13 +43,44 @@ def _extract_guid(entry: dict) -> str:
     return guid
 
 
-def fetch_articles(feed_url: str, *, limit: Optional[int] = None, timezone: str = "Europe/Dublin") -> List[Article]:
+def _download(feed_url: str) -> requests.Response:
+    """GET the feed with a timeout, retrying transient network failures."""
+    last_exc: Exception | None = None
+    for attempt, delay in enumerate((*RETRY_DELAYS_SECONDS, None), start=1):
+        try:
+            response = requests.get(
+                feed_url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT}
+            )
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            last_exc = exc
+            if delay is None:
+                break
+            LOGGER.warning(
+                "RSS fetch attempt %d failed (%s); retrying in %d s", attempt, exc, delay
+            )
+            time.sleep(delay)
+    raise RuntimeError(f"Failed to fetch RSS feed: {last_exc}") from last_exc
+
+
+def fetch_articles(
+    feed_url: str, *, limit: int | None = None, timezone: str = "Europe/Dublin"
+) -> list[Article]:
     LOGGER.debug("Fetching RSS feed from %s", feed_url)
-    feed = feedparser.parse(feed_url)
+    response = _download(feed_url)
+    feed = feedparser.parse(
+        response.content,
+        response_headers={"content-type": response.headers.get("Content-Type", "")},
+    )
 
     if feed.bozo:
-        LOGGER.error("RSS parsing encountered exception", exc_info=feed.bozo_exception)
-        raise RuntimeError(f"Failed to parse RSS feed: {feed.bozo_exception}")
+        # feedparser flags harmless issues (charset mismatch, stray '&') while still
+        # parsing every entry; only fail if nothing usable came back.
+        if not feed.entries:
+            LOGGER.error("RSS parsing encountered exception", exc_info=feed.bozo_exception)
+            raise RuntimeError(f"Failed to parse RSS feed: {feed.bozo_exception}")
+        LOGGER.warning("RSS feed parsed with warning: %s", feed.bozo_exception)
 
     zone = ZoneInfo(timezone)
     entries: Iterable = feed.entries
@@ -51,7 +88,7 @@ def fetch_articles(feed_url: str, *, limit: Optional[int] = None, timezone: str 
     if limit is not None:
         entries = entries[:limit]
 
-    articles: List[Article] = []
+    articles: list[Article] = []
     for entry in entries:
         try:
             article = Article(
