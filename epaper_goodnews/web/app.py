@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
 
 from flask import (
     Flask,
@@ -18,7 +18,7 @@ from flask import (
 )
 
 from ..config import AppConfig
-from ..display_controller import DisplayController
+from ..display_controller import DisplayBusyError, DisplayController
 from ..job_manager import JobManager
 from ..scheduler import SchedulerService
 from ..storage import StorageConfig, list_metadata_files, load_health
@@ -36,7 +36,7 @@ class AppState:
     display: DisplayController
 
 
-def _load_metadata(path: Path) -> Optional[dict]:
+def _load_metadata(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -71,7 +71,7 @@ def create_app(state: AppState) -> Flask:
         start = (page - 1) * per_page
         end = start + per_page
         slice_files = files[start:end]
-        entries: List[dict] = []
+        entries: list[dict] = []
         for path in slice_files:
             data = _load_metadata(path)
             if data:
@@ -115,12 +115,16 @@ def create_app(state: AppState) -> Flask:
     def current_image():
         if not state.storage.current_image.exists():
             abort(404)
-        return send_from_directory(state.storage.current_image.parent, state.storage.current_image.name)
+        return send_from_directory(
+            state.storage.current_image.parent, state.storage.current_image.name
+        )
 
     @app.post("/generate")
     def generate():
         started = state.trigger_generation()
-        wants_json = request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html
+        wants_json = (
+            request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html
+        )
         payload = {"started": started, "running": state.job_manager.is_running()}
         if wants_json or request.is_json:
             return jsonify(payload)
@@ -131,20 +135,28 @@ def create_app(state: AppState) -> Flask:
         image_path = state.storage.images_path / f"{run_id}.png"
         if not image_path.exists():
             abort(404)
+        status = 200
         try:
-            state.display.display_image(image_path)
+            state.display.display_image(image_path, wait=False)
             ok = True
             message = "Image pushed to display"
+        except DisplayBusyError as exc:
+            ok = False
+            message = str(exc)
+            status = 409
         except Exception as exc:
             LOGGER.error("Push to display failed: %s", exc)
             ok = False
             message = str(exc)
-        wants_json = request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html
+            status = 500
+        wants_json = (
+            request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html
+        )
         if wants_json or request.is_json:
-            return jsonify({"ok": ok, "message": message})
+            return jsonify({"ok": ok, "message": message}), status
         if ok:
             return redirect(url_for("history"))
-        abort(500)
+        abort(status, description=message)
 
     @app.get("/api/current")
     def api_current():
@@ -176,6 +188,14 @@ def create_app(state: AppState) -> Flask:
                 "last_run": status.last_run.isoformat() if status.last_run else None,
                 "last_status": status.last_status.value if status.last_status else None,
                 "message": status.message,
+                # In-memory since the service started; None until the first refresh.
+                "last_display_refresh": (
+                    state.display.last_refresh_at.isoformat()
+                    if state.display.last_refresh_at
+                    else None
+                ),
+                "display_error": state.display.last_error,
+                "next_run": state.scheduler.next_run,
             }
         )
 

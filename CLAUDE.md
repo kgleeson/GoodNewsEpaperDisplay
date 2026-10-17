@@ -37,13 +37,14 @@ EOF
 CFLAGS="-I/tmp/spi_stub" uv sync
 ```
 
-The `spidev`, `gpiod`, and `rpi-gpio` packages are skipped on macOS via `[tool.uv] override-dependencies` in `pyproject.toml`. The `gpiod` warning on display init at runtime is harmless — the mock device handles it gracefully.
+The `spidev`, `gpiod`, and `rpi-gpio` packages are skipped on macOS via `[tool.uv] override-dependencies` in `pyproject.toml`. omni-epd can't load on macOS (gpiod import, ARM-only `didder`), so with `EPAPER_DEVICE=omni_epd.mock` on a non-Linux host `DisplayController` bypasses omni-epd and writes `mock_output.png`: the image quantised to the 7 panel primaries with Pillow Floyd–Steinberg, which is what the Pi's driver does with the current `omni-epd.ini`.
 
-### Linting / formatting (ruff)
+### Linting / formatting (ruff) and tests
 
 ```bash
 uv run ruff check .            # lint
 uv run ruff format .           # format
+OPENAI_API_KEY=test uv run pytest -q   # tests (no network or hardware)
 ```
 
 ### Migrating old Pi data
@@ -82,10 +83,10 @@ On the Pi, remove `EPAPER_DEVICE=omni_epd.mock` (or set `EPAPER_DEVICE=waveshare
 | `EPAPER_DATA_DIR` | `./data` | Output root |
 | `EPAPER_SCHEDULE_HOUR` / `MINUTE` | `8` / `0` | Daily run time (Europe/Dublin) |
 | `EPAPER_WEB_PORT` | `8000` | Flask port |
-| `EPAPER_DISPLAY_GAMMA` | `0.8` | Gamma correction applied first; < 1.0 lifts shadows without crushing highlights |
-| `EPAPER_DISPLAY_CONTRAST` | `0.9` | PIL contrast multiplier; < 1.0 compresses tonal range upward, preventing black crush |
-| `EPAPER_DISPLAY_BRIGHTNESS` | `1.2` | PIL brightness multiplier (1.0 = no change) |
-| `EPAPER_DISPLAY_SATURATION` | `1.1` | PIL colour saturation multiplier (1.0 = no change) |
+| `EPAPER_DISPLAY_GAMMA` | `1.0` | Gamma correction applied first; < 1.0 lifts shadows (below 0.9 washes out darks) |
+| `EPAPER_DISPLAY_CONTRAST` | `1.0` | PIL contrast multiplier |
+| `EPAPER_DISPLAY_BRIGHTNESS` | `1.0` | PIL brightness multiplier (1.0 = no change) |
+| `EPAPER_DISPLAY_SATURATION` | `1.2` | PIL colour saturation multiplier (1.0 = no change) |
 
 ## Architecture
 
@@ -97,11 +98,13 @@ The pipeline runs sequentially through five stages orchestrated by `pipeline.py:
 4. **`image_pipeline.py`** — calls OpenAI image API (base64 response), resizes to 800×480, saves PNG
 5. **`display_controller.py`** — passes the PNG to omni-epd's `display()` method, which handles palette quantization and dithering internally using `didder`
 
-The `serve` command wires these together: `SchedulerService` (APScheduler, DST-aware) fires the daily job via `JobManager`, which also handles cancellation when the web UI triggers a manual regeneration.
+The `serve` command wires these together: `SchedulerService` (APScheduler) fires the daily job via `JobManager`, which also handles cancellation when the web UI triggers a manual regeneration. The scheduler runs in UTC with a Europe/Dublin `CronTrigger` (APScheduler 3.10 fires an hour late on the spring DST change otherwise), uses `misfire_grace_time=None` (the Pi has no RTC, so NTP steps the clock forward after boot and wake-ups are late), and runs a catch-up check 5 minutes after startup if today's run was missed.
 
 ### Display driver
 
-omni-epd abstracts the Waveshare hardware. The device string (`EPAPER_DEVICE`) maps to an omni-epd driver. Dithering is configured via `omni-epd.ini` in the project root — adjust `dither`, `dither_strength`, and `dither_serpentine` to tune image quality.
+omni-epd abstracts the Waveshare hardware. The device string (`EPAPER_DEVICE`) maps to an omni-epd driver. Dithering is configured via `omni-epd.ini` in the project root. It currently has no `dither` option on purpose, so the Waveshare driver's own Pillow Floyd–Steinberg is used. omni-epd silently ignores unknown dither names (e.g. `Bayer4x4`; the valid form is `dither=Bayer` + `dither_args=4,4`), so `DisplayController.initialize()` validates the name at startup and logs an error.
+
+The panel is powered only during a refresh: `display_image()` serialises refreshes with a lock, enforces Waveshare's 180 s minimum interval (`/push` gets a 409 instead of waiting), gives the driver's busy-wait a 90 s deadline, and always ends with `sleep()` (or `module_exit()` after a timeout). `serve` turns SIGTERM into a clean shutdown so a restart can't cut a refresh off mid-way.
 
 ### Storage layout
 

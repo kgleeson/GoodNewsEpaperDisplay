@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import signal
 from pathlib import Path
-from typing import Optional
 
 import typer
-
 from openai import OpenAI
 
 from epaper_goodnews.config import AppConfig, load_config
@@ -14,6 +13,7 @@ from epaper_goodnews.display_controller import DisplayController
 from epaper_goodnews.job_manager import JobManager
 from epaper_goodnews.pipeline import run_generation
 from epaper_goodnews.scheduler import SchedulerService
+from epaper_goodnews.storage import load_health
 from epaper_goodnews.web.app import AppState, create_app
 
 app = typer.Typer(help="E-Paper Good News controller")
@@ -28,6 +28,8 @@ def setup_logging(log_dir: Path) -> None:
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     handler.setFormatter(formatter)
     logging.basicConfig(level=logging.INFO, handlers=[handler, logging.StreamHandler()])
+    # Per-request access lines made up ~40% of app.log; keep warnings and errors only.
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 
 def create_client(config: AppConfig) -> OpenAI:
@@ -37,7 +39,7 @@ def create_client(config: AppConfig) -> OpenAI:
 
 
 def init_components(
-    env_path: Optional[Path] = None,
+    env_path: Path | None = None,
 ) -> tuple[AppConfig, OpenAI, DisplayController, JobManager, SchedulerService]:
     config = load_config(env_path)
     setup_logging(config.storage.logs_path)
@@ -73,8 +75,8 @@ def generate():
 
 @app.command()
 def serve(
-    host: Optional[str] = typer.Option(None),
-    port: Optional[int] = typer.Option(None),
+    host: str | None = typer.Option(None),
+    port: int | None = typer.Option(None),
 ):
     """Start the combined scheduler and web server. Set EPAPER_DEVICE=omni_epd.mock to skip hardware."""
     config, client, display, job_manager, scheduler = init_components()
@@ -92,8 +94,16 @@ def serve(
     def trigger() -> bool:
         return job_manager.start(job)
 
+    def handle_sigterm(signum, frame):
+        # systemd stops the service with SIGTERM; turn it into SystemExit so the
+        # finally block below runs and an in-flight refresh can finish and sleep.
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
     scheduler.start()
     scheduler.schedule_daily(trigger)
+    scheduler.schedule_catch_up(trigger, lambda: load_health(config.storage).last_success)
 
     state = AppState(
         config=config,
