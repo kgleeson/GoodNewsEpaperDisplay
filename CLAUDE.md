@@ -76,9 +76,9 @@ On the Pi, remove `EPAPER_DEVICE=omni_epd.mock` (or set `EPAPER_DEVICE=waveshare
 |---|---|---|
 | `OPENAI_API_KEY` | required | OpenAI auth |
 | `EPAPER_DEVICE` | `waveshare_epd.epd7in3f` | omni-epd device string; use `omni_epd.mock` for dev |
-| `EPAPER_TEXT_MODEL` | `gpt-4o-mini` | OpenAI text model for positivity + headline |
-| `EPAPER_IMAGE_MODEL` | `gpt-image-1` | OpenAI image model |
-| `EPAPER_IMAGE_SIZE` | `1536x1024` | Requested image size (landscape) |
+| `EPAPER_TEXT_MODEL` | `gpt-6-luna` | OpenAI text model for positivity + headline |
+| `EPAPER_IMAGE_MODEL` | `gpt-image-2.5-flare` | OpenAI image model (quality `medium` via `EPAPER_IMAGE_QUALITY`) |
+| `EPAPER_IMAGE_SIZE` | `1600x960` | Requested image size (5:3, exactly 2x the panel) |
 | `EPAPER_RSS_FEED_URL` | RTÉ RSS URL | News source |
 | `EPAPER_DATA_DIR` | `./data` | Output root |
 | `EPAPER_SCHEDULE_HOUR` / `MINUTE` | `8` / `0` | Daily run time (Europe/Dublin) |
@@ -105,6 +105,14 @@ The `serve` command wires these together: `SchedulerService` (APScheduler) fires
 omni-epd abstracts the Waveshare hardware. The device string (`EPAPER_DEVICE`) maps to an omni-epd driver. Dithering is configured via `omni-epd.ini` in the project root. It currently has no `dither` option on purpose, so the Waveshare driver's own Pillow Floyd–Steinberg is used. omni-epd silently ignores unknown dither names (e.g. `Bayer4x4`; the valid form is `dither=Bayer` + `dither_args=4,4`), so `DisplayController.initialize()` validates the name at startup and logs an error.
 
 The panel is powered only during a refresh: `display_image()` serialises refreshes with a lock, enforces Waveshare's 180 s minimum interval (`/push` gets a 409 instead of waiting), gives the driver's busy-wait a 90 s deadline, and always ends with `sleep()` (or `module_exit()` after a timeout). `serve` turns SIGTERM into a clean shutdown so a restart can't cut a refresh off mid-way.
+
+### Illustration style
+
+`epaper_goodnews/style.py` holds the house style (`STYLE_PROMPT`), the e-paper notes, and the reference preamble, applied to every image. With `EPAPER_IMAGE_STYLE_REFERENCES` on (the default), the three panels in `epaper_goodnews/style_refs/` (late-2025 `gpt-image-1-mini` images) are sent through `images.edit` as style references. This is what keeps `gpt-image-2.5-flare` from drifting towards detailed or realistic rendering. Change the style by editing `style.py` or swapping reference images, not by adding style words to the scene prompt.
+
+### Colour mapping
+
+With `EPAPER_DISPLAY_COLOUR_MAPPING=measured` (the default), `DisplayController` picks inks by how they actually look. It squeezes the image into the range between the black and white inks, boosts saturation by 1.4, and Floyd–Steinberg dithers against `MEASURED_INKS` (photographed 2026-10-17). It then sends the matching pure primaries, which the driver passes through unchanged. In this mode the `EPAPER_DISPLAY_GAMMA/CONTRAST/BRIGHTNESS/SATURATION` settings are not used; they apply only with `EPAPER_DISPLAY_COLOUR_MAPPING=driver`. On macOS the mock's `mock_output.png` is rendered with the measured inks, so it previews the panel.
 
 ### Storage layout
 

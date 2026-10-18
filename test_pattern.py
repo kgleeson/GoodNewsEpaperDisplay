@@ -159,6 +159,7 @@ def main() -> None:
                 brightness=cfg.display_brightness,
                 contrast=cfg.display_contrast,
                 gamma=cfg.display_gamma,
+                colour_mapping=cfg.display_colour_mapping,
             )
             print(
                 f"Adjustments: gamma={cfg.display_gamma} contrast={cfg.display_contrast} "
@@ -166,7 +167,12 @@ def main() -> None:
             )
         else:
             ctrl = DisplayController(
-                device_type=device, saturation=1.0, brightness=1.0, contrast=1.0, gamma=1.0
+                device_type=device,
+                saturation=1.0,
+                brightness=1.0,
+                contrast=1.0,
+                gamma=1.0,
+                colour_mapping="driver",
             )
             print("No display adjustments (raw output)")
 
