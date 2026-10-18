@@ -20,6 +20,55 @@ BUSY_TIMEOUT_SECONDS = 90
 MOCK_DEVICE = "omni_epd.mock"
 PANEL_PALETTE = (0, 0, 0, 255, 255, 255, 0, 255, 0, 0, 0, 255, 255, 0, 0, 255, 255, 0, 255, 128, 0)
 
+# How each ink actually looks, in the driver's index order (black, white, green, blue, red,
+# yellow, orange). Measured on 2026-10-17 from a raw photo of a calibration pattern, with the
+# frame's white mat as the white reference.
+MEASURED_INKS = (
+    (58, 58, 71),
+    (182, 177, 175),
+    (92, 107, 85),
+    (83, 84, 109),
+    (142, 95, 95),
+    (173, 168, 114),
+    (147, 106, 91),
+)
+# The inks are low-chroma; this restores colour after squeezing the image into their range.
+MEASURED_SATURATION = 1.4
+COLOUR_MAPPINGS = ("measured", "driver")
+
+
+def _palette_image(colours) -> Image.Image:
+    palette = Image.new("P", (1, 1))
+    flat = [channel for rgb in colours for channel in rgb]
+    palette.putpalette(flat + [0, 0, 0] * (256 - len(colours)))
+    return palette
+
+
+def map_to_measured_inks(img: Image.Image, saturation: float = MEASURED_SATURATION) -> Image.Image:
+    """Choose inks by how they really look; return a 'P' image of driver ink indices.
+
+    The source is squeezed into the panel's real range (black ink .. white ink), then
+    Floyd-Steinberg picks among the measured ink colours, so lightness and hue are judged
+    against what the panel can actually show instead of ideal primaries.
+    """
+    black, white = MEASURED_INKS[0], MEASURED_INKS[1]
+    luts = []
+    for channel in range(3):
+        lo, hi = black[channel], white[channel]
+        luts += [int(lo + (hi - lo) * v / 255) for v in range(256)]
+    squeezed = img.convert("RGB").point(luts)
+    vivid = ImageEnhance.Color(squeezed).enhance(saturation)
+    return vivid.quantize(palette=_palette_image(MEASURED_INKS))
+
+
+def indices_to_rgb(indexed: Image.Image, colours) -> Image.Image:
+    out = indexed.copy()
+    out.putpalette(
+        [channel for rgb in colours for channel in rgb] + [0, 0, 0] * (256 - len(colours))
+    )
+    return out.convert("RGB")
+
+
 # Dither names omni-epd 0.4.2 understands (virtualepd.py), after it lowercases them and
 # strips hyphens. Anything else is silently ignored by omni-epd.
 VALID_DITHERS = {
@@ -105,7 +154,13 @@ class DisplayController:
         gamma: float = 1.0,
         ini_path: Path = Path("omni-epd.ini"),
         mock_output: Path = Path("mock_output.png"),
+        colour_mapping: str = "measured",
     ) -> None:
+        if colour_mapping not in COLOUR_MAPPINGS:
+            raise ValueError(
+                f"colour_mapping must be one of {COLOUR_MAPPINGS}, not {colour_mapping!r}"
+            )
+        self._colour_mapping = colour_mapping
         self._device_type = device_type
         self._saturation = saturation
         self._brightness = brightness
@@ -133,8 +188,17 @@ class DisplayController:
         return True
 
     def prepare_image(self, image_path: Path) -> Image.Image:
+        """Return the RGB image handed to omni-epd.
+
+        "measured": pure driver primaries chosen against the measured inks; the driver's own
+        quantize then passes them through unchanged. "driver": the gamma/contrast/brightness/
+        saturation adjustments, leaving colour choice to the driver's quantize.
+        """
         with Image.open(image_path) as src:
             img = src.convert("RGB")
+        if self._colour_mapping == "measured":
+            primaries = [tuple(PANEL_PALETTE[i : i + 3]) for i in range(0, 21, 3)]
+            return indices_to_rgb(map_to_measured_inks(img), primaries)
         if self._gamma != 1.0:
             img = img.point(_gamma_lut(self._gamma) * 3)
         if self._contrast != 1.0:
@@ -194,9 +258,14 @@ class DisplayController:
     def _write_mock_preview(self, img: Image.Image) -> None:
         # omni-epd can't load on macOS (gpiod, ARM-only didder). Approximate what the
         # Waveshare driver does: quantise to the 7 primaries with Floyd-Steinberg.
-        palette = Image.new("P", (1, 1))
-        palette.putpalette(PANEL_PALETTE + (0, 0, 0) * 249)
-        img.quantize(palette=palette).convert("RGB").save(self._mock_output)
+        indexed = img.quantize(
+            palette=_palette_image([PANEL_PALETTE[i : i + 3] for i in range(0, 21, 3)])
+        )
+        if self._colour_mapping == "measured":
+            # Show roughly how the panel will look, using the measured ink colours.
+            indices_to_rgb(indexed, MEASURED_INKS).save(self._mock_output)
+        else:
+            indexed.convert("RGB").save(self._mock_output)
         LOGGER.info("Mock display: wrote preview to %s", self._mock_output)
 
     def _refresh_panel(self, img: Image.Image) -> None:

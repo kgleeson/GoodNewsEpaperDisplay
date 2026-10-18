@@ -30,7 +30,7 @@ class FakeClient:
         self.image_calls: list[dict] = []
         self._positivity = positivity
         self.responses = SimpleNamespace(parse=self._parse)
-        self.images = SimpleNamespace(generate=self._generate)
+        self.images = SimpleNamespace(generate=self._generate, edit=self._generate)
 
     def _parse(self, **kwargs):
         self.parse_calls.append(kwargs)

@@ -14,6 +14,7 @@ from PIL.Image import Resampling
 from .config import AppConfig, StorageConfig
 from .models import HeadlineResult, ImageResult, PositiveArticle
 from .structured import usage_dict
+from .style import DISPLAY_NOTES, REFERENCE_PREAMBLE, STYLE_PROMPT, reference_images
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,39 +38,24 @@ class ImageGenerationError(RuntimeError):
     pass
 
 
-def _build_image_prompt(headline: HeadlineResult, positives: list[PositiveArticle]) -> str:
+def _build_image_prompt(
+    headline: HeadlineResult, positives: list[PositiveArticle], *, with_references: bool = False
+) -> str:
     descriptors = "; ".join(p.article.title for p in positives if p.article.title)
     if not descriptors:
         descriptors = headline.headline
 
-    return (
-        f"Create a watercolour illustration that depicts the subject of a specific news story. "
-        f"THE NEWS (this is what to illustrate — be literal and specific to it): {descriptors}. "
+    scene = (
+        f"SUBJECT: illustrate a specific news story. THE NEWS (be literal and specific to it): {descriptors}. "
         f"Overall theme: {headline.headline}. "
-        f"Pick the SINGLE most visually concrete subject from the news above and depict that one thing directly. "
-        f"Show the actual subject of the story — the specific people, place, activity, object, or event it describes. "
-        f"For example: an exam story shows students at desks writing; a renovation story shows a building being repaired; "
-        f"a climate story shows the specific weather, energy, or nature element involved; a sports story shows that sport. "
-        f"Do NOT default to generic scenery. Do NOT add rolling hills, cottages, castles, stone walls, or pastoral countryside "
-        f"unless the news story is specifically about those things. The setting must come from the news, not from a generic template. "
-        f"Do not include any text, lettering, captions, signs, or typography. "
-        f"COMPOSITION: Fill the frame. Focus on the subject up close — a clear, readable focal point that fills most of the image. "
-        f"Avoid wide empty landscapes; favour the people, object, or action that the story is actually about. "
-        f"When characters appear: natural human proportions, expressive realistic faces, painted and integrated — not cartoon-styled. "
-        f"STYLE: Rich painterly handmade watercolour. Loose wet washes, visible pigment blooms, wet-on-wet blending, "
-        f"natural colour bleeding at edges. High-quality illustrated book aesthetic — expressive and human, not cartoon. "
-        f"Thin organic dark-brown linework, loose and selective. "
-        f"LIGHT AND COLOUR: Keep the image BRIGHT and well-lit overall — like clear daylight, not dusk or gloom. "
-        f"Let the subject guide the palette; use whatever colours the story calls for, warm or cool. "
-        f"Avoid an overall dark, heavy, or shadowy image — favour light, open, brightly-lit scenes. "
-        f"DISPLAY CONSTRAINTS (7-colour e-paper, actual ink appearances): "
-        f"the 'blue' ink renders PURPLE/VIOLET — avoid large pure-blue areas (skies, water); use teal/cyan instead (maps to green), "
-        f"or keep sky minimal. The 'yellow' ink renders OLIVE — avoid yellow as a dominant tone. "
-        f"Avoid yellow or blue clothing; use red, green, orange, brown, or white. "
-        f"Use BRIGHT MID-TONES — dark shades of any colour collapse to near-black, so avoid large deeply-shadowed areas. "
-        f"Keep whites clean and bright (any warm tint renders olive); keep foliage bright medium green, not dark. "
-        f"Not a poster, not flat vector art, not cartoon illustration, no typography."
+        f"Pick the SINGLE most visually concrete subject from the news above and depict that one thing directly — "
+        f"the specific people, place, activity, object or event it describes. For example: an exam story shows "
+        f"students at desks writing; a renovation story shows a building being repaired; a sports story shows that "
+        f"sport. Do NOT default to generic scenery (rolling hills, cottages, castles, stone walls) unless the story "
+        f"is about it. One main subject with at most two or three supporting elements. "
     )
+    preamble = REFERENCE_PREAMBLE if with_references else ""
+    return preamble + scene + STYLE_PROMPT + DISPLAY_NOTES
 
 
 def validate_image_size(model: str, size: str) -> None:
@@ -130,20 +116,33 @@ def generate_image_assets(
     if cancel_event and cancel_event.is_set():
         raise ImageGenerationError("Image generation cancelled")
 
-    prompt = _build_image_prompt(headline, positives)
-    LOGGER.info("Requesting image generation from OpenAI")
-
+    references = reference_images() if config.openai.image_style_references else []
+    prompt = _build_image_prompt(headline, positives, with_references=bool(references))
     request_size = config.openai.image_size
     validate_image_size(config.openai.image_model, request_size)
 
     try:
-        response = client.images.generate(
-            model=config.openai.image_model,
-            prompt=prompt,
-            size=request_size,
-            quality=config.openai.image_quality,  # type: ignore[arg-type]
-            background="opaque",
-        )
+        if references:
+            # Style references go through the edit endpoint, which accepts several input
+            # images and generates a new image guided by them.
+            LOGGER.info("Requesting image with %d style references", len(references))
+            response = client.images.edit(
+                model=config.openai.image_model,
+                image=[(path.name, path.read_bytes(), "image/png") for path in references],
+                prompt=prompt,
+                size=request_size,
+                quality=config.openai.image_quality,  # type: ignore[arg-type]
+                background="opaque",
+            )
+        else:
+            LOGGER.info("Requesting image generation from OpenAI")
+            response = client.images.generate(
+                model=config.openai.image_model,
+                prompt=prompt,
+                size=request_size,
+                quality=config.openai.image_quality,  # type: ignore[arg-type]
+                background="opaque",
+            )
     except Exception as exc:
         raise ImageGenerationError(f"OpenAI image generation failed: {exc}") from exc
 

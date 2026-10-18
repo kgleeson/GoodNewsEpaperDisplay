@@ -15,6 +15,7 @@ from epaper_goodnews.image_pipeline import (
     validate_image_size,
 )
 from epaper_goodnews.models import Article, HeadlineResult, PositiveArticle
+from epaper_goodnews.style import DISPLAY_NOTES, REFERENCE_PREAMBLE, STYLE_PROMPT, reference_images
 
 
 @pytest.mark.parametrize("size", ["1024x1024", "1536x1024", "1024x1536", "auto"])
@@ -88,10 +89,16 @@ class FakeImages:
         self._b64 = b64
         self.calls: list[dict] = []
 
-    def generate(self, **kwargs):
-        self.calls.append(kwargs)
+    def _respond(self, endpoint, kwargs):
+        self.calls.append({"endpoint": endpoint, **kwargs})
         usage = SimpleNamespace(model_dump=lambda **_: {"output_tokens": 1234})
         return SimpleNamespace(id="img_1", data=[SimpleNamespace(b64_json=self._b64)], usage=usage)
+
+    def generate(self, **kwargs):
+        return self._respond("generate", kwargs)
+
+    def edit(self, **kwargs):
+        return self._respond("edit", kwargs)
 
 
 @pytest.fixture
@@ -124,9 +131,10 @@ def test_generate_image_assets_requests_configured_size_and_saves_800x480(config
     )
 
     call = images.calls[0]
-    assert call["model"] == "gpt-image-2.5-sunburst"
+    assert call["endpoint"] == "edit"  # style references are on by default
+    assert call["model"] == "gpt-image-2.5-flare"
     assert call["size"] == "1600x960"
-    assert call["quality"] == "high"
+    assert call["quality"] == "medium"
     assert result.source_size == "1600x960"
     assert result.usage == {"output_tokens": 1234}
     with Image.open(result.image_path) as saved:
@@ -147,3 +155,54 @@ def test_generate_image_assets_rejects_invalid_size_without_calling_api(config):
             run_id="abc",
         )
     assert images.calls == []
+
+
+def _run(config, images):
+    headline, positives = _inputs()
+    return generate_image_assets(
+        config=config,
+        storage=config.storage,
+        client=SimpleNamespace(images=images),
+        headline=headline,
+        positives=positives,
+        run_id="abc",
+    )
+
+
+def test_style_references_are_sent_with_style_prompt(config):
+    images = FakeImages(_b64_png(1600, 960))
+    result = _run(config, images)
+    call = images.calls[0]
+    names = [name for name, _, _ in call["image"]]
+    assert names == [p.name for p in reference_images()]
+    assert len(names) >= 1
+    assert all(data[:8] == b"\x89PNG\r\n\x1a\n" for _, data, _ in call["image"])
+    assert call["prompt"].startswith(REFERENCE_PREAMBLE)
+    assert STYLE_PROMPT in call["prompt"] and DISPLAY_NOTES in call["prompt"]
+    assert "Otters return" in call["prompt"]
+    assert result.prompt == call["prompt"]
+
+
+def test_text_only_when_references_disabled(config):
+    config.openai.image_style_references = False
+    images = FakeImages(_b64_png(1600, 960))
+    _run(config, images)
+    call = images.calls[0]
+    assert call["endpoint"] == "generate"
+    assert "image" not in call
+    assert REFERENCE_PREAMBLE not in call["prompt"]
+    assert STYLE_PROMPT in call["prompt"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(None, True), ("false", False), ("0", False), ("true", True)]
+)
+def test_style_references_env_switch(monkeypatch, tmp_path, value, expected):
+    from epaper_goodnews.config import load_config
+
+    monkeypatch.setenv("EPAPER_DATA_DIR", str(tmp_path / "data"))
+    if value is None:
+        monkeypatch.delenv("EPAPER_IMAGE_STYLE_REFERENCES", raising=False)
+    else:
+        monkeypatch.setenv("EPAPER_IMAGE_STYLE_REFERENCES", value)
+    assert load_config(tmp_path / "missing.env").openai.image_style_references is expected

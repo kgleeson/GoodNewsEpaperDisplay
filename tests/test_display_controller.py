@@ -56,7 +56,7 @@ def test_initialize_flags_invalid_dither(tmp_path):
 def test_mock_preview_uses_panel_palette(tmp_path, image_path, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     out = tmp_path / "mock.png"
-    ctrl = DisplayController("omni_epd.mock", mock_output=out)
+    ctrl = DisplayController("omni_epd.mock", mock_output=out, colour_mapping="driver")
     ctrl.display_image(image_path)
     colours = {c for _, c in Image.open(out).convert("RGB").getcolors(maxcolors=256)}
     palette = {tuple(dc.PANEL_PALETTE[i : i + 3]) for i in range(0, 21, 3)}
@@ -163,3 +163,57 @@ def test_successful_refresh_sleeps(monkeypatch, image_path):
     ctrl = run_with_fake_panel(monkeypatch, image_path, epd, epdconfig)
     assert epd.calls == ["prepare", "display", "sleep"]
     assert ctrl.last_error is None
+
+
+PRIMARIES = {tuple(dc.PANEL_PALETTE[i : i + 3]) for i in range(0, 21, 3)}
+
+
+def _driver_quantize(img):
+    """What epd7in3f.getbuffer() does: quantise to the primaries with Floyd-Steinberg."""
+    palette = Image.new("P", (1, 1))
+    palette.putpalette(list(dc.PANEL_PALETTE) + [0, 0, 0] * 249)
+    return img.quantize(palette=palette).convert("RGB")
+
+
+def test_measured_mapping_sends_pure_primaries_the_driver_keeps(tmp_path):
+    path = tmp_path / "grad.png"
+    grad = Image.new("RGB", (64, 32))
+    grad.putdata([(x * 4, y * 8, 255 - x * 4) for y in range(32) for x in range(64)])
+    grad.save(path)
+    out = DisplayController("omni_epd.mock").prepare_image(path)
+    colours = {c for _, c in out.getcolors(maxcolors=256)}
+    assert colours <= PRIMARIES
+    assert _driver_quantize(out).tobytes() == out.tobytes()
+
+
+def test_measured_mapping_picks_inks_by_appearance(tmp_path):
+    # Pure white and black map to the white and black inks; a mid green that the ideal
+    # palette would send mostly to bright green stays a mix weighted to the dull green ink.
+    path = tmp_path / "blocks.png"
+    img = Image.new("RGB", (60, 20), (255, 255, 255))
+    img.paste((0, 0, 0), (20, 0, 40, 20))
+    img.paste((92, 107, 85), (40, 0, 60, 20))
+    img.save(path)
+    out = DisplayController("omni_epd.mock").prepare_image(path)
+    assert out.getpixel((10, 10)) == (255, 255, 255)
+    assert out.getpixel((30, 10)) == (0, 0, 0)
+    block = [out.getpixel((x, y)) for x in range(44, 56) for y in range(4, 16)]
+    assert block.count((0, 255, 0)) > len(block) // 3
+
+
+def test_driver_mapping_keeps_adjustments(image_path):
+    ctrl = DisplayController("omni_epd.mock", saturation=1.0, colour_mapping="driver")
+    assert ctrl.prepare_image(image_path).getpixel((0, 0)) == (200, 120, 60)
+
+
+def test_invalid_colour_mapping_rejected():
+    with pytest.raises(ValueError):
+        DisplayController("omni_epd.mock", colour_mapping="fancy")
+
+
+def test_mock_preview_uses_measured_inks(tmp_path, image_path, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    out = tmp_path / "mock.png"
+    DisplayController("omni_epd.mock", mock_output=out).display_image(image_path)
+    colours = {c for _, c in Image.open(out).convert("RGB").getcolors(maxcolors=256)}
+    assert colours <= set(dc.MEASURED_INKS)

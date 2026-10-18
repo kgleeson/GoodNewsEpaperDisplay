@@ -12,9 +12,9 @@ DEFAULT_SCHEDULE_HOUR = 8
 DEFAULT_SCHEDULE_MINUTE = 0
 DEFAULT_DEVICE = "waveshare_epd.epd7in3f"
 DEFAULT_TEXT_MODEL = "gpt-6-luna"
-DEFAULT_IMAGE_MODEL = "gpt-image-2.5-sunburst"
+DEFAULT_IMAGE_MODEL = "gpt-image-2.5-flare"
 DEFAULT_IMAGE_SIZE = "1600x960"
-DEFAULT_IMAGE_QUALITY = "high"
+DEFAULT_IMAGE_QUALITY = "medium"
 DEFAULT_POSITIVITY_MIN_SCORE = 0.6
 
 LOGGER = logging.getLogger(__name__)
@@ -27,6 +27,8 @@ class OpenAIConfig:
     image_model: str = DEFAULT_IMAGE_MODEL
     image_size: str = DEFAULT_IMAGE_SIZE
     image_quality: str = DEFAULT_IMAGE_QUALITY
+    # Send the bundled style reference images with each request (see style.py).
+    image_style_references: bool = True
     organization: str | None = None
     # Reasoning effort per text task; None omits the parameter (non-reasoning models).
     positivity_reasoning_effort: str | None = "none"
@@ -70,6 +72,8 @@ class AppConfig:
     display_brightness: float = 1.0
     display_contrast: float = 1.0
     display_gamma: float = 1.0
+    # "measured" picks inks by their measured appearance; "driver" uses the adjustments above.
+    display_colour_mapping: str = "measured"
 
 
 def _ensure_directories(storage: StorageConfig) -> None:
@@ -139,6 +143,8 @@ def load_config(env_path: Path | None = None) -> AppConfig:
             image_model=os.getenv("EPAPER_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
             image_size=os.getenv("EPAPER_IMAGE_SIZE", DEFAULT_IMAGE_SIZE),
             image_quality=os.getenv("EPAPER_IMAGE_QUALITY", DEFAULT_IMAGE_QUALITY),
+            image_style_references=os.getenv("EPAPER_IMAGE_STYLE_REFERENCES", "true").lower()
+            not in ("0", "false", "no", "off"),
             positivity_reasoning_effort=_optional_env("EPAPER_POSITIVITY_REASONING_EFFORT", "none"),
             headline_reasoning_effort=_optional_env("EPAPER_HEADLINE_REASONING_EFFORT", "low"),
         ),
@@ -161,6 +167,7 @@ def load_config(env_path: Path | None = None) -> AppConfig:
         display_brightness=float(os.getenv("EPAPER_DISPLAY_BRIGHTNESS", 1.0)),
         display_contrast=float(os.getenv("EPAPER_DISPLAY_CONTRAST", 1.0)),
         display_gamma=float(os.getenv("EPAPER_DISPLAY_GAMMA", 1.0)),
+        display_colour_mapping=os.getenv("EPAPER_DISPLAY_COLOUR_MAPPING", "measured").lower(),
     )
 
     return config
