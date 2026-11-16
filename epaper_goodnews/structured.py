@@ -4,11 +4,15 @@ import logging
 from typing import Any, TypeVar
 
 from openai import OpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+# Now and then the model answers in prose instead of the JSON schema, and the SDK fails to
+# parse it (this cost the 2026-11-03 run). Asking again straight away normally works.
+MALFORMED_OUTPUT_RETRIES = 1
 
 
 def _find_refusal(response: Any) -> str | None:
@@ -44,7 +48,8 @@ def parse_structured(
     """Call the Responses API with Structured Outputs and return (response, parsed).
 
     Raises ``error_cls`` on API errors, truncated ("incomplete") responses, refusals,
-    or a missing parsed payload.
+    or a missing parsed payload. Output that isn't valid for the schema is requested
+    again ``MALFORMED_OUTPUT_RETRIES`` times before giving up.
     """
     kwargs: dict = {
         "model": model,
@@ -55,10 +60,16 @@ def parse_structured(
     if reasoning_effort:
         kwargs["reasoning"] = {"effort": reasoning_effort}
 
-    try:
-        response = client.responses.parse(**kwargs)
-    except Exception as exc:
-        raise error_cls(f"OpenAI {label} call failed: {exc}") from exc
+    for attempt in range(MALFORMED_OUTPUT_RETRIES + 1):
+        try:
+            response = client.responses.parse(**kwargs)
+            break
+        except ValidationError as exc:
+            if attempt == MALFORMED_OUTPUT_RETRIES:
+                raise error_cls(f"OpenAI {label} output did not match the schema: {exc}") from exc
+            LOGGER.warning("OpenAI %s returned malformed output; asking again", label)
+        except Exception as exc:
+            raise error_cls(f"OpenAI {label} call failed: {exc}") from exc
 
     usage = usage_dict(response)
     if usage:

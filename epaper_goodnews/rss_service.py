@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import feedparser
@@ -19,15 +19,13 @@ USER_AGENT = "epaper-goodnews/0.1"
 
 
 def _parse_datetime(entry: dict, default_tz: ZoneInfo) -> datetime:
+    # feedparser's *_parsed values are always UTC, whatever offset the feed used.
     if "published_parsed" in entry and entry.published_parsed:
-        dt = datetime(*entry.published_parsed[:6])
+        dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
     elif "updated_parsed" in entry and entry.updated_parsed:
-        dt = datetime(*entry.updated_parsed[:6])
+        dt = datetime(*entry.updated_parsed[:6], tzinfo=timezone.utc)
     else:
         dt = datetime.now(tz=default_tz)
-
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=default_tz)
     return dt.astimezone(default_tz)
 
 

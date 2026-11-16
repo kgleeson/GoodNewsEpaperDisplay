@@ -62,3 +62,13 @@ def test_gives_up_after_retries(monkeypatch):
     monkeypatch.setattr(rss_service.requests, "get", down)
     with pytest.raises(RuntimeError, match="fetch"):
         rss_service.fetch_articles("https://example.ie/feed")
+
+
+def test_published_time_is_converted_from_utc(monkeypatch):
+    # feedparser normalises pubDate to UTC; 08:00 +0100 is 08:00 in Dublin in summer.
+    feed = FEED.format(enc="utf-8", amp="and").replace(
+        "<guid>1</guid>", "<guid>1</guid><pubDate>Wed, 15 Jul 2026 08:00:00 +0100</pubDate>"
+    )
+    serve(monkeypatch, feed.encode())
+    first = rss_service.fetch_articles("https://example.ie/feed")[0]
+    assert first.published.isoformat() == "2026-07-15T08:00:00+01:00"

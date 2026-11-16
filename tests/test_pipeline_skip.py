@@ -57,7 +57,7 @@ class FakeDisplay:
         self.fail = fail
         self.shown: list = []
 
-    def display_image(self, path):
+    def display_image(self, path, *, cancel_event=None):
         self.shown.append(path)
         if self.fail:
             raise RuntimeError("panel unplugged")
@@ -160,3 +160,53 @@ def test_invalid_image_size_fails_before_any_api_call(config):
     metadata = _run(config, client, FakeDisplay())
     assert metadata.status == RunStatus.FAILED
     assert client.parse_calls == [] and client.image_calls == []
+
+
+def test_cancel_noticed_inside_a_stage_is_recorded_as_cancelled(config, monkeypatch):
+    import threading
+
+    cancel = threading.Event()
+    client = FakeClient([0.9] * 5)
+    original = client.responses.parse
+
+    def parse_then_cancel(**kwargs):
+        cancel.set()  # the user hits Regenerate while the positivity call is in flight
+        return original(**kwargs)
+
+    client.responses.parse = parse_then_cancel
+    display = FakeDisplay()
+    metadata = pipeline.run_generation(
+        config=config, client=client, storage=config.storage, display=display, cancel_event=cancel
+    )
+    assert metadata.status == RunStatus.CANCELLED
+    assert metadata.errors == ["Job cancelled"]
+    assert client.image_calls == [] and display.shown == []
+
+
+def test_cancel_while_waiting_for_the_panel_is_cancelled_not_failed(config, yesterday):
+    from epaper_goodnews.display_controller import RefreshCancelledError
+
+    class CancelledDisplay:
+        def display_image(self, path, *, cancel_event=None):
+            raise RefreshCancelledError("Cancelled while waiting to refresh the panel")
+
+    metadata = _run(config, FakeClient([0.9] * 5), CancelledDisplay())
+    assert metadata.status == RunStatus.CANCELLED
+    assert os.readlink(config.storage.current_image) == str(yesterday[0])
+
+
+def test_run_times_use_the_schedule_zone_not_the_system_zone(config):
+    from datetime import datetime, timedelta, timezone
+
+    config.scheduler.timezone = "Pacific/Kiritimati"  # UTC+14, no DST
+    metadata = _run(config, FakeClient([0.0] * 5), FakeDisplay())
+    expected = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=14)
+    assert metadata.started_at.tzinfo is None
+    assert abs(metadata.started_at - expected) < timedelta(minutes=1)
+    assert abs(metadata.completed_at - expected) < timedelta(minutes=1)
+
+
+def test_image_file_shares_the_metadata_files_name(config):
+    metadata = _run(config, FakeClient([0.9] * 5), FakeDisplay())
+    meta_file = next(config.storage.metadata_path.glob(f"*-{metadata.run_id}.json"))
+    assert metadata.image.image_path.stem == meta_file.stem

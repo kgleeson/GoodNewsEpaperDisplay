@@ -298,7 +298,7 @@
 
     <!-- Main -->
     <div class="container">
-      <div id="app-state" data-run-id="{{ metadata.run_id if metadata and metadata.run_id else '' }}"></div>
+      <div id="app-state" data-run-id="{{ metadata.run_id if metadata and metadata.run_id else '' }}" data-last-run-id="{{ last_run_id or '' }}"></div>
 
       <!-- Headline -->
       <div class="headline-section" id="headline-block" {% if not metadata %}style="display:none"{% endif %}>
@@ -417,25 +417,35 @@
           }
         }
 
-        function pollStatus(previousRunId, attempt) {
+        // What the run that just finished did. data.status describes the image on show
+        // (the last successful run), so the outcome comes from data.last_run instead.
+        function outcomeMessage(lastRun) {
+          if (lastRun.status === 'success')   return 'New edition ready.';
+          if (lastRun.status === 'skipped')   return 'No story was positive enough; the current image stays.';
+          if (lastRun.status === 'cancelled') return 'Run cancelled.';
+          return 'Generation failed: ' + (lastRun.message || 'see the log for details');
+        }
+
+        function pollStatus(previousLastRunId, attempt) {
           attempt = attempt || 0;
           fetch('/api/current?ts=' + Date.now())
             .then(function(r) { return r.json(); })
             .then(function(data) {
               updateUI(data);
               var stillRunning = Boolean(data.job_running);
-              var runId = data.run_id || null;
-              var finished = !stillRunning && runId && runId !== previousRunId;
+              var lastRun = data.last_run || {};
+              var finished = !stillRunning && lastRun.run_id && lastRun.run_id !== previousLastRunId;
               if (finished || (!stillRunning && attempt > 5)) {
                 setButtonState(false, 'Generate new edition');
+                if (appState && lastRun.run_id) appState.dataset.lastRunId = lastRun.run_id;
                 if (statusMessage) {
-                  statusMessage.textContent = data.status === 'success'
-                    ? 'New edition ready.'
-                    : 'Finished with status: ' + (data.status || 'unknown');
+                  statusMessage.textContent = finished
+                    ? outcomeMessage(lastRun)
+                    : 'No new run was recorded. Check the log.';
                 }
                 return;
               }
-              setTimeout(function() { pollStatus(runId || previousRunId, attempt + 1); },
+              setTimeout(function() { pollStatus(previousLastRunId, attempt + 1); },
                 Math.min(5000, 1000 + attempt * 500));
             })
             .catch(function(err) {
@@ -448,13 +458,13 @@
         form.addEventListener('submit', function(e) {
           e.preventDefault();
           if (statusMessage) statusMessage.textContent = 'Composing…';
-          var previousRunId = appState ? (appState.dataset.runId || null) : null;
+          var previousLastRunId = appState ? (appState.dataset.lastRunId || null) : null;
           setButtonState(true, 'Composing…');
           fetch(form.action, { method: 'POST', headers: { 'Accept': 'application/json' } })
             .then(function(r) { return r.json(); })
             .then(function(data) {
               if (statusMessage) statusMessage.textContent = data.started ? 'Generation in progress…' : 'Already running…';
-              pollStatus(previousRunId, 0);
+              pollStatus(previousLastRunId, 0);
             })
             .catch(function(err) {
               console.error('Failed to start generation', err);

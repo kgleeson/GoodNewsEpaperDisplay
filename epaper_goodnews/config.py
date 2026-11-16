@@ -74,6 +74,8 @@ class AppConfig:
     display_gamma: float = 1.0
     # "measured" picks inks by their measured appearance; "driver" uses the adjustments above.
     display_colour_mapping: str = "measured"
+    # Measured mapping only: treat the illustration's ivory paper as the panel's white.
+    display_paper_white: bool = True
 
 
 def _ensure_directories(storage: StorageConfig) -> None:
@@ -84,6 +86,8 @@ def _ensure_directories(storage: StorageConfig) -> None:
 
 
 def _build_storage(base_path: Path) -> StorageConfig:
+    # Absolute, so the `current.*` symlinks resolve whatever EPAPER_DATA_DIR looks like.
+    base_path = base_path.expanduser().resolve()
     images = base_path / "images"
     metadata = base_path / "metadata"
     logs = base_path.parent / "logs"
@@ -168,6 +172,8 @@ def load_config(env_path: Path | None = None) -> AppConfig:
         display_contrast=float(os.getenv("EPAPER_DISPLAY_CONTRAST", 1.0)),
         display_gamma=float(os.getenv("EPAPER_DISPLAY_GAMMA", 1.0)),
         display_colour_mapping=os.getenv("EPAPER_DISPLAY_COLOUR_MAPPING", "measured").lower(),
+        display_paper_white=os.getenv("EPAPER_DISPLAY_PAPER_WHITE", "true").strip().lower()
+        not in ("0", "false", "no", "off"),
     )
 
     return config

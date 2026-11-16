@@ -25,7 +25,6 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ def _transform_metadata(data: dict, images_source: Path, images_target: Path) ->
     return data
 
 
-def _find_current(metadata_dir: Path) -> tuple[Optional[Path], Optional[Path]]:
+def _find_current(metadata_dir: Path) -> tuple[Path | None, Path | None]:
     """Return (latest_metadata_path, latest_image_path) from metadata files, newest first."""
     files = sorted(metadata_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for meta_path in files:
@@ -167,9 +166,15 @@ def migrate(source_dir: Path, target_dir: Path, *, dry_run: bool = False) -> Non
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--source", required=True, type=Path, help="Old data directory (from the Pi)")
-    parser.add_argument("--target", required=True, type=Path, help="New data directory (default: ./data)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--source", required=True, type=Path, help="Old data directory (from the Pi)"
+    )
+    parser.add_argument(
+        "--target", required=True, type=Path, help="New data directory (default: ./data)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
     args = parser.parse_args()
 

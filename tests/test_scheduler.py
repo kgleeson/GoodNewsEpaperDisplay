@@ -75,3 +75,17 @@ def _lateness_after_firing(run_local: datetime) -> timedelta:
 def test_no_dst_lateness(fired):
     # 2026-03-29 fired an hour late in production with a ZoneInfo-zoned scheduler.
     assert abs(_lateness_after_firing(at(fired))) < timedelta(seconds=1)
+
+
+def test_schedule_once_replaces_a_pending_job():
+    svc = SchedulerService(SchedulerConfig(hour=8, minute=0, timezone="Europe/Dublin"))
+    svc._scheduler.start(paused=True)
+    try:
+        svc.schedule_once(lambda: None, 60, job_id="retry")
+        first = svc._scheduler.get_job("retry").next_run_time
+        svc.schedule_once(lambda: None, 3600, job_id="retry")
+        jobs = [job for job in svc._scheduler.get_jobs() if job.id == "retry"]
+        assert len(jobs) == 1
+        assert jobs[0].next_run_time - first > timedelta(minutes=50)
+    finally:
+        svc._scheduler.shutdown(wait=False)

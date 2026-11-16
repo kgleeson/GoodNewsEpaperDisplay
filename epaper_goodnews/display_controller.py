@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import configparser
 import logging
+import statistics
 import sys
 import threading
 import time
@@ -16,6 +17,9 @@ LOGGER = logging.getLogger(__name__)
 MIN_REFRESH_INTERVAL_SECONDS = 180
 # A normal 7-colour refresh takes ~35 s in total; each busy-wait gets this long.
 BUSY_TIMEOUT_SECONDS = 90
+# How long shutdown waits for a refresh in progress (~35 s). Kept under systemd's default
+# 90 s stop timeout, after which the service would be killed mid-refresh.
+CLOSE_TIMEOUT_SECONDS = 75
 
 MOCK_DEVICE = "omni_epd.mock"
 PANEL_PALETTE = (0, 0, 0, 255, 255, 255, 0, 255, 0, 0, 0, 255, 255, 0, 0, 255, 255, 0, 255, 128, 0)
@@ -36,6 +40,15 @@ MEASURED_INKS = (
 MEASURED_SATURATION = 1.4
 COLOUR_MAPPINGS = ("measured", "driver")
 
+# The illustrations are painted on ivory paper, around (254, 239, 197). Reproduced
+# faithfully that needs yellow ink in every light area, which gives the panel a khaki cast.
+# With paper-white on, the paper colour is treated as the panel's white instead.
+# A border only counts as paper if it is this light; a painting that runs to the edge
+# (or an old full-bleed image) is left alone.
+PAPER_MIN_BRIGHTEST_CHANNEL = 225
+PAPER_MIN_DARKEST_CHANNEL = 150
+PAPER_FRAME_WIDTH = 3
+
 
 def _palette_image(colours) -> Image.Image:
     palette = Image.new("P", (1, 1))
@@ -44,19 +57,64 @@ def _palette_image(colours) -> Image.Image:
     return palette
 
 
-def map_to_measured_inks(img: Image.Image, saturation: float = MEASURED_SATURATION) -> Image.Image:
+def estimate_paper_colour(img: Image.Image) -> tuple[int, int, int] | None:
+    """The colour of the unpainted paper border, or None if the image doesn't have one.
+
+    Takes the median of a thin frame around the edge, so paint that strays into the
+    border in places doesn't matter.
+    """
+    rgb = img.convert("RGB")
+    width, height = rgb.size
+    frame = PAPER_FRAME_WIDTH
+    if width <= 2 * frame or height <= 2 * frame:
+        return None
+    strips = [
+        (0, 0, width, frame),
+        (0, height - frame, width, height),
+        (0, frame, frame, height - frame),
+        (width - frame, frame, width, height - frame),
+    ]
+    data = b"".join(rgb.crop(box).tobytes() for box in strips)  # r, g, b, r, g, b, ...
+    paper = tuple(int(statistics.median(data[channel::3])) for channel in range(3))
+    if max(paper) < PAPER_MIN_BRIGHTEST_CHANNEL or min(paper) < PAPER_MIN_DARKEST_CHANNEL:
+        return None
+    return paper
+
+
+def paper_to_white(img: Image.Image) -> Image.Image:
+    """Rebalance the image so its paper colour becomes pure white.
+
+    Each channel is scaled so the paper reaches 255, the way a camera's white balance
+    would. Images without a light paper border are returned unchanged.
+    """
+    rgb = img.convert("RGB")
+    paper = estimate_paper_colour(rgb)
+    if paper is None:
+        LOGGER.info("No light paper border found; leaving the white balance alone")
+        return rgb
+    luts = []
+    for channel in range(3):
+        luts += [min(255, round(v * 255 / paper[channel])) for v in range(256)]
+    return rgb.point(luts)
+
+
+def map_to_measured_inks(
+    img: Image.Image, saturation: float = MEASURED_SATURATION, *, paper_white: bool = False
+) -> Image.Image:
     """Choose inks by how they really look; return a 'P' image of driver ink indices.
 
     The source is squeezed into the panel's real range (black ink .. white ink), then
     Floyd-Steinberg picks among the measured ink colours, so lightness and hue are judged
-    against what the panel can actually show instead of ideal primaries.
+    against what the panel can actually show instead of ideal primaries. With
+    `paper_white`, the image's paper colour is mapped to the white ink first.
     """
+    img = paper_to_white(img) if paper_white else img.convert("RGB")
     black, white = MEASURED_INKS[0], MEASURED_INKS[1]
     luts = []
     for channel in range(3):
         lo, hi = black[channel], white[channel]
         luts += [int(lo + (hi - lo) * v / 255) for v in range(256)]
-    squeezed = img.convert("RGB").point(luts)
+    squeezed = img.point(luts)
     vivid = ImageEnhance.Color(squeezed).enhance(saturation)
     return vivid.quantize(palette=_palette_image(MEASURED_INKS))
 
@@ -119,6 +177,10 @@ class PanelTimeoutError(RuntimeError):
     pass
 
 
+class RefreshCancelledError(RuntimeError):
+    """The job was cancelled while waiting for its turn to refresh the panel."""
+
+
 def _gamma_lut(gamma: float) -> list[int]:
     if gamma not in _GAMMA_LUT_CACHE:
         _GAMMA_LUT_CACHE[gamma] = [int(255 * (i / 255) ** gamma) for i in range(256)]
@@ -155,12 +217,14 @@ class DisplayController:
         ini_path: Path = Path("omni-epd.ini"),
         mock_output: Path = Path("mock_output.png"),
         colour_mapping: str = "measured",
+        paper_white: bool = False,
     ) -> None:
         if colour_mapping not in COLOUR_MAPPINGS:
             raise ValueError(
                 f"colour_mapping must be one of {COLOUR_MAPPINGS}, not {colour_mapping!r}"
             )
         self._colour_mapping = colour_mapping
+        self._paper_white = paper_white
         self._device_type = device_type
         self._saturation = saturation
         self._brightness = brightness
@@ -171,7 +235,7 @@ class DisplayController:
         self._lock = threading.Lock()
         self._last_refresh_monotonic: float | None = None
         self._driver_used = False
-        self._closing = False
+        self._closing = threading.Event()
         self.last_refresh_at: datetime | None = None
         self.last_error: str | None = None
 
@@ -198,7 +262,8 @@ class DisplayController:
             img = src.convert("RGB")
         if self._colour_mapping == "measured":
             primaries = [tuple(PANEL_PALETTE[i : i + 3]) for i in range(0, 21, 3)]
-            return indices_to_rgb(map_to_measured_inks(img), primaries)
+            indexed = map_to_measured_inks(img, paper_white=self._paper_white)
+            return indices_to_rgb(indexed, primaries)
         if self._gamma != 1.0:
             img = img.point(_gamma_lut(self._gamma) * 3)
         if self._contrast != 1.0:
@@ -209,18 +274,27 @@ class DisplayController:
             img = ImageEnhance.Color(img).enhance(self._saturation)
         return img
 
-    def display_image(self, image_path: Path, *, wait: bool = True) -> None:
+    def display_image(
+        self,
+        image_path: Path,
+        *,
+        wait: bool = True,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
         """Refresh the panel with `image_path`.
 
         With wait=True (scheduled runs) this queues behind any refresh in progress and
         waits out the minimum refresh interval. With wait=False (manual pushes) it
-        raises DisplayBusyError instead of waiting.
+        raises DisplayBusyError instead of waiting. While waiting, `cancel_event` being
+        set raises RefreshCancelledError; once the refresh has started it always finishes.
         """
         if not self._lock.acquire(blocking=wait):
             raise DisplayBusyError("Display is busy with another refresh")
         try:
-            if self._closing:
+            if self._closing.is_set():
                 raise DisplayBusyError("Display is shutting down")
+            if cancel_event and cancel_event.is_set():
+                raise RefreshCancelledError("Cancelled before the panel refresh")
             remaining = self._seconds_until_refresh_allowed()
             if remaining > 0:
                 if not wait:
@@ -228,14 +302,26 @@ class DisplayController:
                         f"Last refresh was too recent; try again in {int(remaining) + 1} s"
                     )
                 LOGGER.info("Waiting %.0f s before refreshing the panel", remaining)
-                time.sleep(remaining)
+                self._wait_for_refresh_slot(remaining, cancel_event)
             self._refresh(image_path)
+        except RefreshCancelledError:
+            LOGGER.info("Panel refresh cancelled")
+            raise
         except Exception as exc:
             self.last_error = f"{datetime.now().isoformat(timespec='seconds')}: {exc}"
             LOGGER.error("Display update failed: %s", exc)
             raise
         finally:
             self._lock.release()
+
+    def _wait_for_refresh_slot(self, seconds: float, cancel_event: threading.Event | None) -> None:
+        """Wait out the refresh interval, giving up early on cancellation or shutdown."""
+        deadline = time.monotonic() + seconds
+        while (left := deadline - time.monotonic()) > 0:
+            if self._closing.wait(min(left, 0.5)):
+                raise DisplayBusyError("Display is shutting down")
+            if cancel_event and cancel_event.is_set():
+                raise RefreshCancelledError("Cancelled while waiting to refresh the panel")
 
     def _seconds_until_refresh_allowed(self) -> float:
         if self._last_refresh_monotonic is None:
@@ -273,7 +359,13 @@ class DisplayController:
 
         epd = displayfactory.load_display_driver(self._device_type)
         self._driver_used = True
-        _install_busy_timeout(epd, BUSY_TIMEOUT_SECONDS)
+        installed = _install_busy_timeout(epd, BUSY_TIMEOUT_SECONDS)
+        if not installed and self._device_type != MOCK_DEVICE:
+            LOGGER.warning(
+                "Could not give the %s driver a busy timeout (its internals have changed?); "
+                "a disconnected or faulty panel would hang the refresh",
+                self._device_type,
+            )
         timed_out = False
         try:
             epd.prepare()
@@ -293,13 +385,15 @@ class DisplayController:
                     _module_exit()
         LOGGER.info("Display updated and set to sleep")
 
-    def close(self, timeout: float = 120) -> None:
-        """Wait for any refresh in progress, then stop further refreshes."""
+    def close(self, timeout: float = CLOSE_TIMEOUT_SECONDS) -> None:
+        """Stop further refreshes, then wait for any refresh in progress."""
+        # Set first: a job waiting out the refresh interval gives up at once, so the
+        # only thing left to wait for is a refresh that has actually started.
+        self._closing.set()
         acquired = self._lock.acquire(timeout=timeout)
         if not acquired:
             LOGGER.warning("Display still busy after %.0f s; closing anyway", timeout)
         try:
-            self._closing = True
             if self._driver_used:
                 _module_exit()
         finally:
@@ -307,16 +401,21 @@ class DisplayController:
                 self._lock.release()
 
 
-def _install_busy_timeout(epd, timeout: float) -> None:
-    """Give the Waveshare driver's busy-wait a deadline.
+def _install_busy_timeout(epd, timeout: float) -> bool:
+    """Give the Waveshare driver's busy-wait a deadline; return False if it can't be done.
 
     The stock ReadBusyH loops forever, so a disconnected or faulty panel would hang
     the job (and keep the panel powered).
     """
     device = getattr(epd, "_device", None)
     epdconfig = sys.modules.get("waveshare_epd.epdconfig")
-    if device is None or epdconfig is None or not hasattr(device, "busy_pin"):
-        return
+    if (
+        device is None
+        or epdconfig is None
+        or not hasattr(device, "busy_pin")
+        or not hasattr(device, "ReadBusyH")
+    ):
+        return False
 
     def read_busy_with_deadline() -> None:
         deadline = time.monotonic() + timeout
@@ -326,6 +425,7 @@ def _install_busy_timeout(epd, timeout: float) -> None:
             epdconfig.delay_ms(5)
 
     device.ReadBusyH = read_busy_with_deadline
+    return True
 
 
 def _module_exit() -> None:

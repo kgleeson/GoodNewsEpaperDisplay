@@ -90,3 +90,6 @@ class HealthStatus:
     last_run: datetime | None
     last_status: RunStatus | None
     message: str | None = None
+    # Latest run that finished its job: a success, or a no-good-news skip.
+    last_ok: datetime | None = None
+    last_run_id: str | None = None
