@@ -93,18 +93,18 @@ On the Pi, remove `EPAPER_DEVICE=omni_epd.mock` (or set `EPAPER_DEVICE=waveshare
 The pipeline runs sequentially through five stages orchestrated by `pipeline.py:run_generation()`:
 
 1. **`rss_service.py`** — fetches RSS via `feedparser`, normalises to `Article` models
-2. **`positivity.py`** — sends a sample to the text model for JSON positivity scores; selects top N
+2. **`positivity.py`** — sends every article to the text model for structured positivity scores; selects up to N at or above `EPAPER_POSITIVITY_MIN_SCORE` (none passing = a `skipped` run that re-displays the current image)
 3. **`headline.py`** — generates an upbeat Irish-English headline + subheading via text model
 4. **`image_pipeline.py`** — calls OpenAI image API (base64 response), resizes to 800×480, saves PNG
-5. **`display_controller.py`** — passes the PNG to omni-epd's `display()` method, which handles palette quantization and dithering internally using `didder`
+5. **`display_controller.py`** — maps the PNG to the panel's inks (see Colour mapping) and passes it to omni-epd's `display()` method
 
-The `serve` command wires these together: `SchedulerService` (APScheduler) fires the daily job via `JobManager`, which also handles cancellation when the web UI triggers a manual regeneration. The scheduler runs in UTC with a Europe/Dublin `CronTrigger` (APScheduler 3.10 fires an hour late on the spring DST change otherwise), uses `misfire_grace_time=None` (the Pi has no RTC, so NTP steps the clock forward after boot and wake-ups are late), and runs a catch-up check 5 minutes after startup if today's run was missed.
+The `serve` command wires these together: `SchedulerService` (APScheduler) fires the daily job via `JobManager`, which also handles cancellation when the web UI triggers a manual regeneration. The scheduler runs in UTC with a Europe/Dublin `CronTrigger` (APScheduler 3.10 fires an hour late on the spring DST change otherwise), uses `misfire_grace_time=None` (the Pi has no RTC, so NTP steps the clock forward after boot and wake-ups are late), and runs a catch-up check 5 minutes after startup if today's run was missed (a success or a no-good-news skip since today's slot both count as done). A scheduled run that fails before producing an image is retried after 30 minutes and again 2 hours later (`RETRY_DELAYS_SECONDS` in `main.py`); manual runs and runs whose panel refresh failed are not retried. The OpenAI client has a 300 s timeout and one SDK retry.
 
 ### Display driver
 
 omni-epd abstracts the Waveshare hardware. The device string (`EPAPER_DEVICE`) maps to an omni-epd driver. Dithering is configured via `omni-epd.ini` in the project root. It currently has no `dither` option on purpose, so the Waveshare driver's own Pillow Floyd–Steinberg is used. omni-epd silently ignores unknown dither names (e.g. `Bayer4x4`; the valid form is `dither=Bayer` + `dither_args=4,4`), so `DisplayController.initialize()` validates the name at startup and logs an error.
 
-The panel is powered only during a refresh: `display_image()` serialises refreshes with a lock, enforces Waveshare's 180 s minimum interval (`/push` gets a 409 instead of waiting), gives the driver's busy-wait a 90 s deadline, and always ends with `sleep()` (or `module_exit()` after a timeout). `serve` turns SIGTERM into a clean shutdown so a restart can't cut a refresh off mid-way.
+The panel is powered only during a refresh: `display_image()` serialises refreshes with a lock, enforces Waveshare's 180 s minimum interval (`/push` gets a 409 instead of waiting), gives the driver's busy-wait a 90 s deadline, and always ends with `sleep()` (or `module_exit()` after a timeout). A job waiting out the interval gives up if it is cancelled or the service is shutting down; a refresh that has started always finishes. `serve` turns SIGTERM into a clean shutdown so a restart can't cut a refresh off mid-way; `close()` waits up to 75 s, inside systemd's default 90 s stop timeout.
 
 ### Illustration style
 
@@ -125,8 +125,12 @@ data/
 logs/app.log    (rotating, 2 MB × 5)
 ```
 
-No BMP files are generated — omni-epd handles the 7-colour conversion at display time.
+No BMP files are generated — the 7-colour conversion happens at display time.
 
 ### Cancellation
 
-`JobManager` holds a single `threading.Event` cancel flag. `pipeline.py` calls `_check_cancel()` between each stage. The web `/generate` POST sets the flag and waits before starting a new run.
+`JobManager` runs one job at a time and gives each job its own `threading.Event` cancel flag. `pipeline.py` calls `_check_cancel()` between each stage. Starting a new job (web `/generate` POST or the scheduler) sets the running job's flag and returns at once; the new job waits for the old one to stop before it begins, so two pipelines never overlap. A cancelled run is recorded as `cancelled`.
+
+### Run records
+
+Run timestamps are naive wall-clock times in `EPAPER_TIMEZONE`, whatever the system timezone is. Metadata filenames only order runs by day (the suffix is a random run id); within a day `list_metadata_files()` orders by file modification time. `/api/current` describes the image on show (the last successful run) and reports the most recent run, which may have failed or been skipped, under `last_run`. `/health` adds `last_ok`: the latest success or skip.
