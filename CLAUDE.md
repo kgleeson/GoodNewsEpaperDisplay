@@ -47,6 +47,8 @@ uv run ruff format .           # format
 OPENAI_API_KEY=test uv run pytest -q   # tests (no network or hardware)
 ```
 
+CI (`.github/workflows/ci.yml`) runs these three on every pull request and on `main`, on Python 3.10 (the oldest supported, and the local dev venv) and 3.13 (what the Pi runs). It installs with `uv sync --locked --no-install-package lgpio`: lgpio has no wheel for 3.13 and needs system libraries to build.
+
 ### Migrating old Pi data
 
 If you have an existing `data/` directory from the old version, copy it from the Pi then run:
