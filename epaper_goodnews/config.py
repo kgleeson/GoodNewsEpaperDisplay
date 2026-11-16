@@ -84,6 +84,8 @@ def _ensure_directories(storage: StorageConfig) -> None:
 
 
 def _build_storage(base_path: Path) -> StorageConfig:
+    # Absolute, so the `current.*` symlinks resolve whatever EPAPER_DATA_DIR looks like.
+    base_path = base_path.expanduser().resolve()
     images = base_path / "images"
     metadata = base_path / "metadata"
     logs = base_path.parent / "logs"

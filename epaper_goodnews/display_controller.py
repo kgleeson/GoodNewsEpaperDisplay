@@ -16,6 +16,9 @@ LOGGER = logging.getLogger(__name__)
 MIN_REFRESH_INTERVAL_SECONDS = 180
 # A normal 7-colour refresh takes ~35 s in total; each busy-wait gets this long.
 BUSY_TIMEOUT_SECONDS = 90
+# How long shutdown waits for a refresh in progress (~35 s). Kept under systemd's default
+# 90 s stop timeout, after which the service would be killed mid-refresh.
+CLOSE_TIMEOUT_SECONDS = 75
 
 MOCK_DEVICE = "omni_epd.mock"
 PANEL_PALETTE = (0, 0, 0, 255, 255, 255, 0, 255, 0, 0, 0, 255, 255, 0, 0, 255, 255, 0, 255, 128, 0)
@@ -119,6 +122,10 @@ class PanelTimeoutError(RuntimeError):
     pass
 
 
+class RefreshCancelledError(RuntimeError):
+    """The job was cancelled while waiting for its turn to refresh the panel."""
+
+
 def _gamma_lut(gamma: float) -> list[int]:
     if gamma not in _GAMMA_LUT_CACHE:
         _GAMMA_LUT_CACHE[gamma] = [int(255 * (i / 255) ** gamma) for i in range(256)]
@@ -171,7 +178,7 @@ class DisplayController:
         self._lock = threading.Lock()
         self._last_refresh_monotonic: float | None = None
         self._driver_used = False
-        self._closing = False
+        self._closing = threading.Event()
         self.last_refresh_at: datetime | None = None
         self.last_error: str | None = None
 
@@ -209,18 +216,27 @@ class DisplayController:
             img = ImageEnhance.Color(img).enhance(self._saturation)
         return img
 
-    def display_image(self, image_path: Path, *, wait: bool = True) -> None:
+    def display_image(
+        self,
+        image_path: Path,
+        *,
+        wait: bool = True,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
         """Refresh the panel with `image_path`.
 
         With wait=True (scheduled runs) this queues behind any refresh in progress and
         waits out the minimum refresh interval. With wait=False (manual pushes) it
-        raises DisplayBusyError instead of waiting.
+        raises DisplayBusyError instead of waiting. While waiting, `cancel_event` being
+        set raises RefreshCancelledError; once the refresh has started it always finishes.
         """
         if not self._lock.acquire(blocking=wait):
             raise DisplayBusyError("Display is busy with another refresh")
         try:
-            if self._closing:
+            if self._closing.is_set():
                 raise DisplayBusyError("Display is shutting down")
+            if cancel_event and cancel_event.is_set():
+                raise RefreshCancelledError("Cancelled before the panel refresh")
             remaining = self._seconds_until_refresh_allowed()
             if remaining > 0:
                 if not wait:
@@ -228,14 +244,26 @@ class DisplayController:
                         f"Last refresh was too recent; try again in {int(remaining) + 1} s"
                     )
                 LOGGER.info("Waiting %.0f s before refreshing the panel", remaining)
-                time.sleep(remaining)
+                self._wait_for_refresh_slot(remaining, cancel_event)
             self._refresh(image_path)
+        except RefreshCancelledError:
+            LOGGER.info("Panel refresh cancelled")
+            raise
         except Exception as exc:
             self.last_error = f"{datetime.now().isoformat(timespec='seconds')}: {exc}"
             LOGGER.error("Display update failed: %s", exc)
             raise
         finally:
             self._lock.release()
+
+    def _wait_for_refresh_slot(self, seconds: float, cancel_event: threading.Event | None) -> None:
+        """Wait out the refresh interval, giving up early on cancellation or shutdown."""
+        deadline = time.monotonic() + seconds
+        while (left := deadline - time.monotonic()) > 0:
+            if self._closing.wait(min(left, 0.5)):
+                raise DisplayBusyError("Display is shutting down")
+            if cancel_event and cancel_event.is_set():
+                raise RefreshCancelledError("Cancelled while waiting to refresh the panel")
 
     def _seconds_until_refresh_allowed(self) -> float:
         if self._last_refresh_monotonic is None:
@@ -273,7 +301,13 @@ class DisplayController:
 
         epd = displayfactory.load_display_driver(self._device_type)
         self._driver_used = True
-        _install_busy_timeout(epd, BUSY_TIMEOUT_SECONDS)
+        installed = _install_busy_timeout(epd, BUSY_TIMEOUT_SECONDS)
+        if not installed and self._device_type != MOCK_DEVICE:
+            LOGGER.warning(
+                "Could not give the %s driver a busy timeout (its internals have changed?); "
+                "a disconnected or faulty panel would hang the refresh",
+                self._device_type,
+            )
         timed_out = False
         try:
             epd.prepare()
@@ -293,13 +327,15 @@ class DisplayController:
                     _module_exit()
         LOGGER.info("Display updated and set to sleep")
 
-    def close(self, timeout: float = 120) -> None:
-        """Wait for any refresh in progress, then stop further refreshes."""
+    def close(self, timeout: float = CLOSE_TIMEOUT_SECONDS) -> None:
+        """Stop further refreshes, then wait for any refresh in progress."""
+        # Set first: a job waiting out the refresh interval gives up at once, so the
+        # only thing left to wait for is a refresh that has actually started.
+        self._closing.set()
         acquired = self._lock.acquire(timeout=timeout)
         if not acquired:
             LOGGER.warning("Display still busy after %.0f s; closing anyway", timeout)
         try:
-            self._closing = True
             if self._driver_used:
                 _module_exit()
         finally:
@@ -307,16 +343,21 @@ class DisplayController:
                 self._lock.release()
 
 
-def _install_busy_timeout(epd, timeout: float) -> None:
-    """Give the Waveshare driver's busy-wait a deadline.
+def _install_busy_timeout(epd, timeout: float) -> bool:
+    """Give the Waveshare driver's busy-wait a deadline; return False if it can't be done.
 
     The stock ReadBusyH loops forever, so a disconnected or faulty panel would hang
     the job (and keep the panel powered).
     """
     device = getattr(epd, "_device", None)
     epdconfig = sys.modules.get("waveshare_epd.epdconfig")
-    if device is None or epdconfig is None or not hasattr(device, "busy_pin"):
-        return
+    if (
+        device is None
+        or epdconfig is None
+        or not hasattr(device, "busy_pin")
+        or not hasattr(device, "ReadBusyH")
+    ):
+        return False
 
     def read_busy_with_deadline() -> None:
         deadline = time.monotonic() + timeout
@@ -326,6 +367,7 @@ def _install_busy_timeout(epd, timeout: float) -> None:
             epdconfig.delay_ms(5)
 
     device.ReadBusyH = read_busy_with_deadline
+    return True
 
 
 def _module_exit() -> None:

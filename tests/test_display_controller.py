@@ -11,6 +11,7 @@ from epaper_goodnews.display_controller import (
     DisplayBusyError,
     DisplayController,
     PanelTimeoutError,
+    RefreshCancelledError,
     check_dither_config,
 )
 
@@ -217,3 +218,78 @@ def test_mock_preview_uses_measured_inks(tmp_path, image_path, monkeypatch):
     DisplayController("omni_epd.mock", mock_output=out).display_image(image_path)
     colours = {c for _, c in Image.open(out).convert("RGB").getcolors(maxcolors=256)}
     assert colours <= set(dc.MEASURED_INKS)
+
+
+def _controller_inside_refresh_interval(monkeypatch):
+    """A controller that refreshed a moment ago, with a recorder in place of the panel."""
+    ctrl = DisplayController("omni_epd.mock")
+    refreshed: list = []
+    monkeypatch.setattr(ctrl, "_refresh", refreshed.append)
+    ctrl._last_refresh_monotonic = dc.time.monotonic()
+    return ctrl, refreshed
+
+
+def test_cancel_ends_the_wait_for_the_refresh_interval(image_path, monkeypatch):
+    ctrl, refreshed = _controller_inside_refresh_interval(monkeypatch)
+    cancel = threading.Event()
+    threading.Timer(0.1, cancel.set).start()
+
+    started = dc.time.monotonic()
+    with pytest.raises(RefreshCancelledError):
+        ctrl.display_image(image_path, cancel_event=cancel)
+
+    assert dc.time.monotonic() - started < 5  # not the 180 s interval
+    assert refreshed == []
+    assert ctrl.last_error is None  # a cancel is not a display fault
+
+
+def test_already_cancelled_job_does_not_refresh(image_path, monkeypatch):
+    ctrl = DisplayController("omni_epd.mock")
+    refreshed: list = []
+    monkeypatch.setattr(ctrl, "_refresh", refreshed.append)
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(RefreshCancelledError):
+        ctrl.display_image(image_path, cancel_event=cancel)
+    assert refreshed == []
+
+
+def test_close_releases_a_job_waiting_for_the_refresh_interval(image_path, monkeypatch):
+    ctrl, refreshed = _controller_inside_refresh_interval(monkeypatch)
+    errors: list = []
+
+    def waiting_job():
+        try:
+            ctrl.display_image(image_path)
+        except Exception as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=waiting_job)
+    worker.start()
+    dc.time.sleep(0.1)  # let it reach the wait
+
+    started = dc.time.monotonic()
+    ctrl.close(timeout=10)
+    worker.join(5)
+
+    assert dc.time.monotonic() - started < 5
+    assert not worker.is_alive()
+    assert isinstance(errors[0], DisplayBusyError)
+    assert refreshed == []
+
+
+def test_warns_when_busy_timeout_cannot_be_installed(monkeypatch, image_path, caplog):
+    class RenamedDevice:  # a driver whose busy-wait is no longer called ReadBusyH
+        busy_pin = 24
+
+    class RenamedEpd(FakeEpd):
+        def __init__(self):
+            super().__init__()
+            self._device = RenamedDevice()
+
+        def display(self, img):
+            self.calls.append("display")
+
+    with caplog.at_level("WARNING"):
+        run_with_fake_panel(monkeypatch, image_path, RenamedEpd(), FakeEpdConfig(busy_value=1))
+    assert "busy timeout" in caplog.text

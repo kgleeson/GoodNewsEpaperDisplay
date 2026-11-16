@@ -61,11 +61,12 @@ def create_app(state: AppState) -> Flask:
             image_url=image_url,
             job_running=state.job_manager.is_running(),
             next_run=state.scheduler.next_run,
+            last_run_id=load_health(state.storage).last_run_id,
         )
 
     @app.get("/history")
     def history():
-        page = max(int(request.args.get("page", "1")), 1)
+        page = max(request.args.get("page", 1, type=int), 1)
         per_page = 5
         files = list_metadata_files(state.storage)
         start = (page - 1) * per_page
@@ -163,13 +164,21 @@ def create_app(state: AppState) -> Flask:
         metadata = _load_metadata(state.storage.current_metadata) or {}
         metadata["job_running"] = state.job_manager.is_running()
         metadata["next_run"] = state.scheduler.next_run
+        # The fields above describe the current image (the last successful run). The most
+        # recent run may have failed, been skipped or been cancelled; report it separately.
+        health = load_health(state.storage)
+        metadata["last_run"] = {
+            "run_id": health.last_run_id,
+            "status": health.last_status.value if health.last_status else None,
+            "message": health.message,
+        }
         if state.storage.current_image.exists():
             metadata["image"] = url_for("current_image")
         return jsonify(metadata)
 
     @app.get("/api/history")
     def api_history():
-        limit = int(request.args.get("limit", "10"))
+        limit = max(request.args.get("limit", 10, type=int), 0)
         files = list_metadata_files(state.storage)[:limit]
         payload = []
         for path in files:
@@ -185,6 +194,8 @@ def create_app(state: AppState) -> Flask:
         return jsonify(
             {
                 "last_success": status.last_success.isoformat() if status.last_success else None,
+                # Latest success or no-good-news skip: the day's run did its job.
+                "last_ok": status.last_ok.isoformat() if status.last_ok else None,
                 "last_run": status.last_run.isoformat() if status.last_run else None,
                 "last_status": status.last_status.value if status.last_status else None,
                 "message": status.message,

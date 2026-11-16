@@ -112,6 +112,7 @@ def generate_image_assets(
     positives: list[PositiveArticle],
     run_id: str,
     cancel_event: Event | None = None,
+    started_at: datetime | None = None,
 ) -> ImageResult:
     if cancel_event and cancel_event.is_set():
         raise ImageGenerationError("Image generation cancelled")
@@ -168,7 +169,8 @@ def generate_image_assets(
     LOGGER.info("Received %s image (requested %s)", source_size, request_size)
     web_image = fit_to_display(base_image)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d")
+    # Same date as the run's metadata file, so the two always share a name.
+    timestamp = (started_at or datetime.now()).strftime("%Y-%m-%d")
     png_name = f"{timestamp}-{run_id}.png"
     png_path = storage.images_path / png_name
     web_image.save(png_path, format="PNG")

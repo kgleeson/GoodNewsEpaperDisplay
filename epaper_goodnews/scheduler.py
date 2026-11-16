@@ -20,10 +20,11 @@ CATCH_UP_DELAY_SECONDS = 300
 
 
 def missed_todays_run(now: datetime, last_success: datetime | None, hour: int, minute: int) -> bool:
-    """True if today's scheduled time has passed and there is no success since it.
+    """True if today's scheduled time has passed and no run has finished its job since.
 
+    `last_success` is the latest run that completed as a success or a no-good-news skip.
     `now` must be timezone-aware in the schedule's zone. A naive `last_success` is
-    taken to be in that same zone.
+    taken to be in that same zone (run timestamps are written as wall-clock time there).
     """
     scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if now < scheduled:
@@ -93,13 +94,23 @@ class SchedulerService:
         """Run `func` once, shortly after startup, if today's run was missed."""
 
         def check() -> None:
-            now = datetime.now(self._timezone)
-            if missed_todays_run(now, last_success(), self._config.hour, self._config.minute):
-                LOGGER.warning("No successful run since today's scheduled time; catching up")
+            if self.missed_today(last_success()):
+                LOGGER.warning("No completed run since today's scheduled time; catching up")
                 func()
 
+        self.schedule_once(check, delay_seconds, job_id="catch-up")
+
+    def missed_today(self, last_success: datetime | None) -> bool:
+        """True if today's slot has passed with no success or skip since (see above)."""
+        now = datetime.now(self._timezone)
+        return missed_todays_run(now, last_success, self._config.hour, self._config.minute)
+
+    def schedule_once(self, func: Callable[[], None], delay_seconds: float, *, job_id: str) -> None:
+        """Run `func` once after `delay_seconds`, replacing any pending job with that id."""
         run_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
-        self._scheduler.add_job(check, trigger=DateTrigger(run_date=run_at), id="catch-up")
+        self._scheduler.add_job(
+            func, trigger=DateTrigger(run_date=run_at), id=job_id, replace_existing=True
+        )
 
     @property
     def next_run(self) -> str | None:

@@ -36,3 +36,7 @@ data/
 
 # Mock display preview
 mock_output.png
+
+# Calibration photos of the panel (large raw files)
+*.heic
+*.dng
