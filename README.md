@@ -205,6 +205,8 @@ uv run ruff format .                   # format
 OPENAI_API_KEY=test uv run pytest -q   # tests (no network or hardware)
 ```
 
+GitHub Actions runs the same three checks on every pull request and on `main`, on Python 3.10 and 3.13 (`.github/workflows/ci.yml`).
+
 To run the whole pipeline without hardware (this calls OpenAI and costs a little):
 
 ```bash
