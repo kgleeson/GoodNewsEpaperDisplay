@@ -87,6 +87,7 @@ On the Pi, remove `EPAPER_DEVICE=omni_epd.mock` (or set `EPAPER_DEVICE=waveshare
 | `EPAPER_DISPLAY_CONTRAST` | `1.0` | PIL contrast multiplier |
 | `EPAPER_DISPLAY_BRIGHTNESS` | `1.0` | PIL brightness multiplier (1.0 = no change) |
 | `EPAPER_DISPLAY_SATURATION` | `1.2` | PIL colour saturation multiplier (1.0 = no change) |
+| `EPAPER_DISPLAY_PAPER_WHITE` | `true` | Measured mapping only: map the image's ivory paper to the white ink |
 
 ## Architecture
 
@@ -113,6 +114,8 @@ The panel is powered only during a refresh: `display_image()` serialises refresh
 ### Colour mapping
 
 With `EPAPER_DISPLAY_COLOUR_MAPPING=measured` (the default), `DisplayController` picks inks by how they actually look. It squeezes the image into the range between the black and white inks, boosts saturation by 1.4, and Floyd–Steinberg dithers against `MEASURED_INKS` (photographed 2026-10-17). It then sends the matching pure primaries, which the driver passes through unchanged. In this mode the `EPAPER_DISPLAY_GAMMA/CONTRAST/BRIGHTNESS/SATURATION` settings are not used; they apply only with `EPAPER_DISPLAY_COLOUR_MAPPING=driver`. On macOS the mock's `mock_output.png` is rendered with the measured inks, so it previews the panel.
+
+`EPAPER_DISPLAY_PAPER_WHITE=true` (the default) adds a white-balance step before the squeeze: `paper_to_white()` takes the median colour of a thin frame around the image (the unpainted ivory border, about 254,239,197) and scales each channel so it becomes 255. Without it the ivory is reproduced with yellow ink, which puts a khaki cast over every light area (yellow ink about 34% of pixels, against 25% with it on). A border that isn't light enough to be paper leaves the image unchanged. Enabled by default on 2026-11-16 on the strength of the measured-ink preview; it had not yet been judged on the real panel. Set it to `false` to go back to the faithful-ivory rendering.
 
 ### Storage layout
 

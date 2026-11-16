@@ -160,6 +160,7 @@ def main() -> None:
                 contrast=cfg.display_contrast,
                 gamma=cfg.display_gamma,
                 colour_mapping=cfg.display_colour_mapping,
+                paper_white=cfg.display_paper_white,
             )
             print(
                 f"Adjustments: gamma={cfg.display_gamma} contrast={cfg.display_contrast} "

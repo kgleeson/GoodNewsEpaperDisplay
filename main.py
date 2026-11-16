@@ -83,6 +83,7 @@ def init_components(
         contrast=config.display_contrast,
         gamma=config.display_gamma,
         colour_mapping=config.display_colour_mapping,
+        paper_white=config.display_paper_white,
     )
     job_manager = JobManager()
     scheduler = SchedulerService(config.scheduler)

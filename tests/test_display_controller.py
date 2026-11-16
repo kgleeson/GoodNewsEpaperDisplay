@@ -293,3 +293,57 @@ def test_warns_when_busy_timeout_cannot_be_installed(monkeypatch, image_path, ca
     with caplog.at_level("WARNING"):
         run_with_fake_panel(monkeypatch, image_path, RenamedEpd(), FakeEpdConfig(busy_value=1))
     assert "busy timeout" in caplog.text
+
+
+IVORY = (254, 239, 197)
+WHITE_INK, YELLOW_INK = 1, 5
+
+
+def _painting_on_paper(paper=IVORY, size=(160, 96)) -> Image.Image:
+    """A painted block in the middle of an unpainted paper border."""
+    img = Image.new("RGB", size, paper)
+    img.paste((40, 140, 70), (30, 20, size[0] - 30, size[1] - 20))
+    return img
+
+
+def _ink_share(indexed: Image.Image, box) -> dict[int, float]:
+    region = indexed.crop(box)
+    total = region.width * region.height
+    return {ink: count / total for count, ink in region.getcolors()}
+
+
+def test_paper_colour_is_read_from_the_border():
+    img = _painting_on_paper()
+    img.paste((40, 140, 70), (0, 40, 12, 56))  # paint straying into the border
+    assert dc.estimate_paper_colour(img) == IVORY
+
+
+@pytest.mark.parametrize("edge", [(60, 110, 200), (30, 30, 30), (200, 120, 60)])
+def test_dark_or_coloured_edge_is_not_treated_as_paper(edge):
+    img = _painting_on_paper(paper=edge)
+    assert dc.estimate_paper_colour(img) is None
+    assert dc.paper_to_white(img).tobytes() == img.tobytes()
+
+
+def test_paper_white_renders_the_border_in_white_ink():
+    img = _painting_on_paper()
+    border = (0, 0, 160, 16)
+
+    faithful = _ink_share(dc.map_to_measured_inks(img), border)
+    adapted = _ink_share(dc.map_to_measured_inks(img, paper_white=True), border)
+
+    assert faithful.get(YELLOW_INK, 0) > 0.2  # ivory needs yellow ink: the khaki cast
+    assert adapted.get(WHITE_INK, 0) > 0.95
+    assert adapted.get(YELLOW_INK, 0) < 0.02
+
+
+def test_paper_white_is_off_unless_asked_for(tmp_path):
+    path = tmp_path / "paper.png"
+    _painting_on_paper().save(path)
+    default = DisplayController("omni_epd.mock").prepare_image(path)
+    enabled = DisplayController("omni_epd.mock", paper_white=True).prepare_image(path)
+    border = [(x, 4) for x in range(0, 160, 3)]
+    assert {default.getpixel(xy) for xy in border} != {(255, 255, 255)}
+    assert {enabled.getpixel(xy) for xy in border} == {(255, 255, 255)}
+    # Still pure primaries the driver passes through unchanged.
+    assert _driver_quantize(enabled).tobytes() == enabled.tobytes()

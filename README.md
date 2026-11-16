@@ -82,6 +82,7 @@ All configuration is through environment variables (the `.env` file). `.env.exam
 | `EPAPER_TIMEZONE` | `Europe/Dublin` | Timezone of the schedule and of recorded run times |
 | `EPAPER_WEB_HOST` / `EPAPER_WEB_PORT` | `0.0.0.0` / `8000` | Web server address |
 | `EPAPER_DISPLAY_COLOUR_MAPPING` | `measured` | `measured` picks inks by how they really look; `driver` leaves it to the driver |
+| `EPAPER_DISPLAY_PAPER_WHITE` | `true` | With `measured` mapping, treat the illustration's ivory paper as the panel's white |
 | `EPAPER_DISPLAY_GAMMA` / `CONTRAST` / `BRIGHTNESS` / `SATURATION` | `1.0` / `1.0` / `1.0` / `1.2` | Image adjustments, used only with `driver` colour mapping |
 
 The web UI has no login. It is meant for a home network only; every "Generate" click costs an image generation.
@@ -89,6 +90,8 @@ The web UI has no login. It is meant for a home network only; every "Generate" c
 ### Colour and dithering
 
 The panel's inks are much duller than the pure colours the driver works with. In the default `measured` mode the app chooses inks itself: it squeezes the image into the range between the real black and white inks, boosts saturation, and Floyd–Steinberg dithers against measured ink colours (`MEASURED_INKS` in `display_controller.py`). It then hands the driver pure primaries, which pass through unchanged.
+
+The illustrations are painted on ivory paper. Shown faithfully, that needs yellow ink in every light area, which gives the whole panel a khaki cast. So by default (`EPAPER_DISPLAY_PAPER_WHITE=true`) each image is rebalanced so its paper border becomes the panel's white: the border, white clothing and highlights come out clean, and the picture reads a little cooler. Images without a light paper border are left as they are. Set it to `false` for the warmer, faithful rendering.
 
 `omni-epd.ini` deliberately has **no** `dither` option, so omni-epd adds no dithering of its own. If you do set one, note that omni-epd silently ignores names it doesn't know (Bayer 4×4 is `dither=Bayer` with `dither_args=4,4`, not `Bayer4x4`); the app checks the name at startup and logs an error.
 
